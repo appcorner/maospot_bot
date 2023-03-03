@@ -327,9 +327,9 @@ def cal_minmax_fibo(symbol, df, closePrice=0.0):
                 tp_fibo = min(idx+config.TP_FIBO, len(fibo_values)-1)
                 tp = price_to_precision(symbol, new_minimum_price + difference * fibo_values[tp_fibo])
 
-        sl_fibo = closePrice - difference * fibo_values[1]
-        sl_sw = min(swing_lows[-config.SWING_TEST:])
-        sl = min(sl_fibo, sl_sw)
+    sl_fibo = closePrice - difference * fibo_values[1]
+    sl_sw = min(swing_lows[-config.SWING_TEST:])
+    sl = min(sl_fibo, sl_sw)
 
     if config.CB_AUTO_MODE == 1:
         callback_rate = cal_callback_rate(symbol, closePrice, tp)
@@ -590,7 +590,7 @@ def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
 
         notify.Send_Image(msg, image_path=filename)
         # await sleep(2)
-        if config.RemovePlot:
+        if config.remove_plot:
             os.remove(filename)
 
     except Exception as ex:
@@ -1216,6 +1216,8 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
             # close = (df.iloc[signalIdx-1]['close'], df.iloc[signalIdx]['close'])
             stoK = df.iloc[signalIdx]['STOCHk']
             stoD = df.iloc[signalIdx]['STOCHd']
+
+            # logger.debug(f'{symbol} {rsi} {adxLast} {stoK} {stoD}')
             
             isSpotEnter = adxLast > adxIn and (
                 (positionLong == 'up' and rsi[0] < positionValueLong and rsi[1] > positionValueLong) or
