@@ -1,6 +1,6 @@
 # stupid_bot
 
-## maomao spot bitkub
+## mao spot bitkub
 สามารถกำหนด strategy ที่ต้องการได้
 - ema ใช้เส้นตัด slow mid fast
 - maomao ใช้เส้น ema และ macd
