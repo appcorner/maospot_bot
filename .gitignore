@@ -1,0 +1,10 @@
+/config.ini
+/config.ini.sample
+/datas
+/json
+/logs
+/orders_history.csv
+/plots
+/test_bk.py
+/venv
+/__pycache__
