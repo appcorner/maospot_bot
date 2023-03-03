@@ -1,0 +1,145 @@
+[bitkub]
+api_key = <bitkub api key>
+api_secret = <bitkub app secret>
+
+[line]
+notify_token = <line notify token>
+remove_plot = on
+summary_report = on
+notify_api_error = on
+
+[app_config]
+;# สามารถข้ามส่วนนี้ไปได้ โดยใช้ค่าที่กำหนดให้ได้เลย
+TIME_SHIFT = 5
+CANDLE_LIMIT = 200
+;CANDLE_PLOT = 100
+;# level การบันทึก log file ทั่วไปให้ใช้แบบ INFO
+;# CRITICAL 50, ERROR 40, WARNING 30, INFO 20, DEBUG 10, NOTSET 0
+LOG_LEVEL = 10
+;# กำหนดรอบเวลาในแสดง update balancec และ mm check
+;# 0=timeframe, 1=15, 2=20, 3=30, 4=60, 5=timeframe/2 
+UB_TIMER_MODE = 4
+MM_TIMER_MIN = 0.5
+;SWING_TF = 5
+;SWING_TEST = 2
+;TP_FIBO = 2
+;CB_AUTO_MODE = 1
+START_TRADE_TF = 1h
+
+[setting]
+timeframe = 1h
+signal_index = -2
+margin_type = THB
+
+;# ระบุ symbol ที่ต้องการใน watch_list, back_list และต้องสอดคล้องกับ margin_type
+;watch_list = THB_BTC,THB_ETH,THB_KUB,THB_XRP,THB_USDT,THB_BNB,THB_ADA,THB_IOST,THB_DOGE,THB_BUSD,THB_DOT,THB_NEAR,THB_ALPHA,THB_CRV,THB_LUNC,THB_ALGO,THB_1INCH,THB_ATOM,THB_LDO,THB_STG,THB_APE,THB_AXL,THB_GALA,THB_IMX,THB_JFIN,THB_OP,THB_SAND,THB_SIX,THB_ZIL
+back_list = THB_LUNA2
+
+trade_mode = on
+sell_mode = on
+
+cost_type = $
+cost_amount = 50
+
+limit_trade = 20
+
+not_trade = 50
+
+tpsl_mode = off
+;tp_long = 12.0
+;tp_short = 12.0
+;tp_close_long = 50.0
+;tp_close_short = 50.0
+;sl_long = 4.0
+;sl_short = 4.0
+
+trailing_stop_mode = off
+;callback_long = 2.5
+;callback_short = 2.5
+;active_tl_long = 10.0
+;active_tl_short = 10.0
+
+fast_type = EMA
+fast_value = 8
+mid_type = EMA
+mid_value = 32
+slow_type = EMA
+slow_value = 32
+;# EMA 12,26,26 -> ลุงโฉลง
+;# EMA 8,21,55 -> fibo #1
+;# EMA 8,55,55 -> fibo #2
+;# EMA 8,32,32 -> mao mao
+
+;# MACD, MACDs, MACDh
+;confirm_macd_by = MACD
+macd_fast = 12
+macd_slow = 26
+macd_signal = 9
+
+;# adx rsi
+adx_period = 14
+rsi_period = 14
+sto_k_period = 14
+sto_smooth_k = 3
+sto_d_period = 3
+
+strategy_mode = adxrsi
+
+[ema]
+confirm_macd_mode = on
+detect_sideway = on
+sideway_mode = 2
+atr_multiple = 1.5
+rolling_period = 15
+
+[maomao]
+# 1. แท่งเทียน​ อยู่เหนือ​ เส้น​ EMA 35 หรือ​ 32​ ก็ได้
+# 2. MACD > 0
+# 3. แท่งราคาปิด​ break ​แท่งเทียน​ ราคา ​High ก่อนหน้า
+# EMA ในข้อ 1 ให้กำหนดค่าใน setting ดังนี้ mid_type = EMA, mid_value = 35
+# จำนวนวันย้อนหลัง สำหรับใช้ตรวจสัญญาน
+back_days = 3
+
+[adxrsi]
+;# @อาร์ม setting
+adx_in = 5
+rsi_enter = down
+rsi_enter_value = 25
+rsi_exit = up
+rsi_exit_value = 80
+
+;# STO on/off
+sto_mode = off
+sto_enter = 20
+sto_exit = 80
+
+[symbols_setting]
+;csv_name = symbol_config.csv
+
+[mm]
+percent_mode = on
+# % of cost for PNL
+# % of margin for Profit
+
+;tp_pnl_long = 0.50
+;tp_pnl_close_rate_long = 25.0
+;sl_pnl_long = 0.25
+;active_tl_pnl_long = 0.50
+;callback_pnl_long = 2.5
+
+;tp_pnl_short = 0.50
+;tp_pnl_close_rate_short = 25.0
+;sl_pnl_short = 0.25
+;active_tl_pnl_short = 0.50
+;callback_pnl_short = 2.5
+
+;tp_profit = 150.0
+;sl_profit = 150.0
+;tp_profit_long = 100.0
+;sl_profit_long = 0.0
+;tp_profit_short = 100.0
+;sl_profit_short = 0.0
+
+clear_margin = 0.01
+
+loss_limit = 3
