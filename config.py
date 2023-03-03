@@ -69,7 +69,7 @@ config.optionxform = str
 config_file = open("config.ini", mode='r', encoding='utf-8-sig')
 config.readfp(config_file)
 
-exchange = get_str('setting', 'exchange', 'binance')
+exchange = get_str('setting', 'exchange', 'bitkub')
 #------------------------------------------------------------
 # exchange
 #------------------------------------------------------------
@@ -153,8 +153,6 @@ mid_value = get_int('setting', 'mid_value')
 slow_type = get_str('setting', 'slow_type')
 slow_value = get_int('setting', 'slow_value')
 
-confirm_macd_by = get_str('setting', 'confirm_macd_by', 'MACD')
-confirm_macd_mode = get_str('setting', 'confirm_macd_mode', 'on') == 'on'
 MACD_FAST = get_int('setting', 'macd_fast')
 MACD_SLOW = get_int('setting', 'macd_slow')
 MACD_SIGNAL = get_int('setting', 'macd_signal')
@@ -170,6 +168,8 @@ STO_D_PERIOD = get_int('setting', 'sto_d_period', 3)
 #------------------------------------------------------------
 # ema
 #------------------------------------------------------------
+confirm_macd_by = get_str('ema', 'confirm_macd_by', 'MACD')
+confirm_macd_mode = get_str('ema', 'confirm_macd_mode', 'on') == 'on'
 is_detect_sideway = get_str('ema', 'detect_sideway', 'on') == 'on'
 sideway_mode = get_int('ema', 'sideway_mode', 2)
 atr_multiple = get_float('ema', 'atr_multiple', 1.5)
