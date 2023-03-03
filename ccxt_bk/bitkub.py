@@ -205,7 +205,7 @@ class bitkub(Exchange):
                 symbol = market[0]['symbol']
             else:
                 symbol_id = market['id']
-            symbol = market['symbol']
+                symbol = market['symbol']
         timestamp = self.milliseconds()
         last = self.safe_float(ticker, 'last')
         change = self.safe_float(ticker, 'change')
@@ -301,11 +301,11 @@ class bitkub(Exchange):
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
         market = self.market(symbol)
-        if type == 'market' or price == None:
+        if type == 'market' and price == None:
             price = 0
         request = {
             'sym': market['id'],
-            'amt': int(amount) if side == 'sell' else self.price_to_precision(symbol, amount),
+            'amt': self.price_to_precision(symbol, amount) if side == 'buy' else amount,
             'rat': self.amount_to_precision(symbol, price),
             'typ': type,
         }
@@ -317,8 +317,22 @@ class bitkub(Exchange):
         if 'result' in response.keys():
             order = response['result']
             id = self.safe_string(order, 'id')
+            r_price = float(order['rat']) if float(order['rat']) > 0 else price
+            if side == 'buy':
+                r_amount = float(order['rec']) if float(order['rec']) > 0 and price > 0 else amount/price
+                r_cost = float(order['amt']) if float(order['amt']) > 0 else amount
+            else:
+                r_amount = float(order['amt']) if float(order['amt']) > 0 else amount
+                r_cost = float(order['rec']) if float(order['rec']) > 0 and price > 0 else amount*price
+            clientOrderId = self.safe_string(order, 'ci', '')
             return {
                 'id': id,
+                'positionSide': 'spot',
+                'side': side,
+                'price': r_price,
+                'amount': r_amount,
+                'cost': r_cost,
+                'clientOrderId': clientOrderId,
                 'info': order,
             }
         else:
@@ -358,7 +372,7 @@ class bitkub(Exchange):
             }
         return self.privatePostApiMarketV2CancelOrder(self.extend(request, params))
 
-    def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
+    def fetch_my_trades(self, symbol, since=None, limit=None, params={}):
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -383,6 +397,7 @@ class bitkub(Exchange):
             cost = float(price * amount)
             fee = self.safe_float(trades[i], 'fee')
             timestamp = self.safe_timestamp(trades[i], 'ts')
+            clientOrderId = self.safe_string(trades[i], 'client_id', '')
             result.append({
                 'info': trades[i],
                 'id': id,
@@ -397,11 +412,13 @@ class bitkub(Exchange):
                 'amount': amount,
                 'cost': cost,
                 'fee': fee,
+                'positionSide': 'spot',
+                'clientOrderId': clientOrderId,
             })
         return result
 
     def parse_trade(self, trade, market=None):
-        timestamp = trade[0] * 1000
+        timestamp = int(trade[0]) * 1000
         side = None
         side = trade[3].lower()
         price = float(trade[1])
