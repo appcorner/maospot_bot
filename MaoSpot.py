@@ -58,7 +58,7 @@ TIMEFRAME_SECONDS = {
 }
 
 CANDLE_PLOT = config.CANDLE_PLOT
-CANDLE_SAVE = CANDLE_PLOT + max(config.mid_value,config.slow_value,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
+CANDLE_SAVE = CANDLE_PLOT + max(config.MID_VALUE,config.SLOW_VALUE,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
 CANDLE_LIMIT = max(config.CANDLE_LIMIT,CANDLE_SAVE)
 
 UB_TIMER_SECONDS = [
@@ -495,7 +495,7 @@ def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
             mpf.make_addplot(RSIhi,ylim=(10, 90),panel=2,color='red',linestyle='-.',width=0.5),
 
             mpf.make_addplot(data['ADX'],ylim=(0, 90),panel=3,color='red',width=0.75,
-                ylabel=f"ADX ({config.ADXPeriod})", y_on_right=True),
+                ylabel=f"ADX ({config.ADX_PERIOD})", y_on_right=True),
             mpf.make_addplot(ADXLine,ylim=(0, 90),panel=3,color='red',linestyle='-.',width=0.5),
 
             mpf.make_addplot(data['STOCHk'],ylim=(0, 100),panel=4,color='blue',width=0.75,
@@ -661,13 +661,13 @@ def add_indicator(symbol, bars):
     df['STOCHd'] = 0
 
     try:
-        fastType = config.fast_type 
-        fastValue = config.fast_value
-        midType = config.mid_type 
-        midValue = config.mid_value        
-        slowType = config.slow_type 
-        slowValue = config.slow_value
-        ADXPeriod = config.ADXPeriod
+        fastType = config.FAST_TYPE 
+        fastValue = config.FAST_VALUE
+        midType = config.MID_TYPE 
+        midValue = config.MID_VALUE        
+        slowType = config.SLOW_TYPE 
+        slowValue = config.SLOW_VALUE
+        ADXPeriod = config.ADX_PERIOD
 
         if symbol in symbols_setting.index:
             # print(symbols_setting.loc[symbol])
@@ -868,14 +868,15 @@ def update_order_history(symbol, orderType:str, order, params={}):
             orders_history[symbol]['positions'][positionSide]['status'] = 'open'
         elif orderType.lower() == 'tp':
             position_info['tp_price'] = params['stopPrice']
-            position_info['tp_amount'] = params['amount']
+            # position_info['tp_amount'] = params['amount']
+            position_info['tp_close_rate'] = params['closeRate']
         elif orderType.lower() == 'sl':
             position_info['sl_price'] = params['stopPrice']
-            position_info['sl_amount'] = params['amount']
+            # position_info['sl_amount'] = params['amount']
         elif orderType.lower() == 'tl':
-            position_info['tl_activatePrice'] = float(params['info']['activatePrice'])
-            position_info['tl_amount'] = params['amount']
-            position_info['tl_callback'] = float(params['info']['priceRate'])
+            position_info['tl_activatePrice'] = params['activatePrice']
+            # position_info['tl_amount'] = params['amount']
+            position_info['tl_callback'] = params['callback']
         elif orderType.lower() == 'close':
             position_info['close_price'] = order['price']
             position_info['close_amount'] = order['amount']
@@ -934,16 +935,16 @@ def load_orders_history_json(filename):
             orders_history = json.load(json_file)
 
 # trading zone -----------------------------------------------------------------
-def genClientOrderId(symbol, code, share_timestamp=False):
+def genClientOrderId(symbol, code, refCID=None):
     # global orders_history
     # order id len <= 32 chars
     # format: {botname}_{tf}_{timestamp}_{magic number}
     # sample: ema_3m_1674903982845_99999
-    # if share_timestamp and symbol in orders_history.keys():
-    #     tmst = orders_history[symbol]['timestamp']
-    # else:
-    #     tmst = int(round(datetime.now().timestamp()*1000))
-    tmst = int(round(datetime.now().timestamp()*1000))
+    if refCID:
+        clientId_tokens = str(refCID).split('_')
+        tmst = int(clientId_tokens[2])
+    else:
+        tmst = int(round(datetime.now().timestamp()*1000))
     gen_order_id = f"{bot_name.lower()}_{code}_{tmst}_{config.magic_number}"
     gen_order_id = gen_order_id[0:32]
     # logger.debug(gen_order_id)
@@ -956,25 +957,25 @@ async def spot_enter(exchange, symbol, amount, tf=config.timeframe):
     ask = float(ticker['ask'])
     order = await exchange.create_order(symbol, 'limit', 'buy', amount, price=ask, params=params)
     # print("Status : LONG ENTERING PROCESSING...")
-    logger.debug(f'{symbol} long_enter {str(order)}')
+    logger.debug(f'{symbol} spot_enter {str(order)}')
     open_order_history(symbol, 'spot')
     update_order_history(symbol, 'open', order)
     await sleep(1)
-    return
+    return params['client_id']
 #-------------------------------------------------------------------------------
-async def spot_close(exchange, symbol, positionAmt, tf=config.timeframe):
+async def spot_close(exchange, symbol, positionAmt, tf=config.timeframe, refCOID=None):
     params={
-        "client_id": genClientOrderId(symbol, 'cl', True),
+        "client_id": genClientOrderId(symbol, 'cl', refCOID),
     }
     ticker = await exchange.fetch_ticker(symbol)
     bid = float(ticker['bid'])
     order = await exchange.create_order(symbol, 'limit', 'sell', positionAmt, price=bid, params=params)
-    logger.debug(f'{symbol} long_close {str(order)}')
+    logger.debug(f'{symbol} spot_close {str(order)}')
     close_order_history(symbol, 'spot')
     update_order_history(symbol, 'close', order)
-    return
+    return params['client_id']
 #-------------------------------------------------------------------------------
-async def cancel_order(exchange, symbol, positionSide:str=None):
+async def cancel_order(exchange, symbol, positionSide:str=None, refCOID=None):
     # try:
     #     await sleep(1)
     #     if positionSide == 'all':
@@ -991,74 +992,48 @@ async def cancel_order(exchange, symbol, positionSide:str=None):
     #     logger.exception(f'cancel_order {symbol}')
     return
 #-------------------------------------------------------------------------------
-async def spot_TPSL(exchange, symbol, amount, PriceEntry, pricetp, pricesl, closeRate):
-    logger.debug(f'{symbol} long_TPSL PriceEntry:{PriceEntry}')
-    await spot_TP(exchange, symbol, amount, pricetp, closeRate)
-    await spot_SL(exchange, symbol, amount, pricesl)
+async def spot_TPSL(exchange, symbol, amount, priceEntry, priceTP, priceSL, closeRate, refCOID=None):
+    logger.debug(f'{symbol} spot_TPSL PriceEntry:{priceEntry}')
+    await spot_TP(exchange, symbol, amount, priceTP, closeRate, refCOID)
+    await spot_SL(exchange, symbol, amount, priceSL, refCOID)
     return
-async def spot_TP(exchange, symbol, amount, pricetp, closeRate, newOrder=True):
-    # closetp = closeRate/100.0
-    # closeamt = amount_to_precision(symbol, amount*closetp)
-    # if closeamt == 0.0:
-    #     closeamt = amount
-    # logger.debug(f'{symbol} long_TP amount:{amount}, pricetp:{pricetp}, closetp:{closetp}, closeRate:{closeRate}, closeamt:{closeamt}')
-    # params = {
-    #     "client_id": genClientOrderId(symbol, 'l-tp', True),
-    # }
-    # if is_positionside_dual:
-    #     params["positionSide"] = "LONG"
-    # else:
-    #     params["positionSide"] = "BOTH"
-    # params['stopPrice'] = pricetp
-    # params['triggerPrice'] = pricetp
-    # order = await exchange.create_order(symbol, 'TAKE_PROFIT_MARKET', 'sell', closeamt, pricetp, params=params)
-    # logger.debug(f'{symbol} long_TP {str(order)}')
-    # if newOrder:
-    #     update_order_history(symbol, 'tp', order)
-    # await sleep(1)
+async def spot_TP(exchange, symbol, amount, priceTP, closeRate, refCOID=None):
+    order = {}
+    params = {}
+    if refCOID:
+        order['positionSide'] = 'spot'
+        order['clientOrderId'] = refCOID
+        params['stopPrice'] = priceTP
+        params['amount'] = amount
+        params['closeRate'] = closeRate
+        update_order_history(symbol, 'tp', order, params)
+        logger.debug(f'{symbol} spot_TP {str(order)} {str(params)}')
     return
-async def spot_SL(exchange, symbol, amount, pricesl, newOrder=True):
-    # logger.debug(f'{symbol} long_SL amount:{amount}, pricesl:{pricesl}')
-    # params = {
-    #     "client_id": genClientOrderId(symbol, 'l-sl', True),
-    # }
-    # if is_positionside_dual:
-    #     params["positionSide"] = "LONG"
-    #     SL_CMD = 'STOP'
-    # else:
-    #     params["positionSide"] = "BOTH"
-    #     SL_CMD = 'STOP_MARKET'
-    # params['stopPrice'] = pricesl
-    # params['triggerPrice'] = pricesl
-    # if not is_positionside_dual:
-    #     params["reduceOnly"] = True
-    # order = await exchange.create_order(symbol, SL_CMD, 'sell', amount, pricesl, params=params)
-    # logger.debug(f'{symbol} long_SL {str(order)}')
-    # if newOrder:
-    #     update_order_history(symbol, 'sl', order)
-    # await sleep(1)
+async def spot_SL(exchange, symbol, amount, priceSL, refCOID=None):
+    order = {}
+    params = {}
+    if refCOID:
+        order['positionSide'] = 'spot'
+        order['clientOrderId'] = refCOID
+        params['stopPrice'] = priceSL
+        params['amount'] = amount
+        update_order_history(symbol, 'sl', order, params)
+        logger.debug(f'{symbol} spot_SL {str(order)} {str(params)}')
     return
 #-------------------------------------------------------------------------------
-async def spot_TLSTOP(exchange, symbol, amount, priceTL, callbackRate):
-    # params = {
-    #     "newClientOrderId": genClientOrderId(symbol, 'l-tl', True),
-    #     'callbackRate': callbackRate, 
-    # }
-    # if is_positionside_dual:
-    #     params["positionSide"] = "LONG"
-    # else:
-    #     params["positionSide"] = "BOTH"
-    #     params["reduceOnly"] = True
-    # if priceTL > 0:
-    #     params['activationPrice'] = priceTL
-    # logger.debug(f'{symbol} amount:{amount}, activationPrice:{priceTL}, callbackRate:{callbackRate}')
-    # order = await exchange.create_order(symbol, 'TRAILING_STOP_MARKET', 'sell', amount, params=params)
-    # logger.debug(f'{symbol} long_TLSTOP {str(order)}')
-    # update_order_history(symbol, 'tl', order)
-    # activatePrice = float(order['info']['activatePrice'])
-    # logger.debug(f'{symbol} amount:{amount}, activationPrice:{priceTL}, activatePrice:{activatePrice}, callbackRate:{callbackRate}')
-    # await sleep(1)
-    return #activatePrice
+async def spot_TLSTOP(exchange, symbol, amount, priceTL, callbackRate, refCOID=None):
+    order = {}
+    params = {}
+    activatePrice = priceTL
+    if refCOID:
+        order['positionSide'] = 'spot'
+        order['clientOrderId'] = refCOID
+        params['activatePrice'] = activatePrice
+        params['amount'] = amount
+        params['callback'] = callbackRate
+        update_order_history(symbol, 'tl', order, params)
+        logger.debug(f'{symbol} spot_TLSTOP {str(order)} {str(params)}')
+    return activatePrice
 #-------------------------------------------------------------------------------
 async def cal_amount(exchange, symbol, leverage, costType, costAmount, closePrice, chkLastPrice):
     # คำนวนจำนวนเหรียญที่ใช้เปิดออเดอร์
@@ -1257,17 +1232,17 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
         notify_msg.append(symbol)
 
         if isSpotEnter == True and hasSpotPosition == False:
-            TPLong = config.tp_long
-            TPCloseLong = config.tp_close_long
-            SLLong = config.sl_long
-            callbackLong = config.callback_long
-            activeTLLong = config.active_tl_long
+            cfg_tp = config.tp
+            cfg_tp_close_rate = config.tp_close_rate
+            cfg_sl = config.sl
+            cfg_callback = config.callback
+            cfg_active_tl = config.active_tl
             if symbol in symbols_setting.index:
-                TPLong = float(symbols_setting.loc[symbol]['tp_long'])
-                TPCloseLong = float(symbols_setting.loc[symbol]['tp_close_long'])
-                SLLong = float(symbols_setting.loc[symbol]['sl_long'])
-                callbackLong = float(symbols_setting.loc[symbol]['callback_long'])
-                activeTLLong = float(symbols_setting.loc[symbol]['active_tl_long'])
+                cfg_tp = float(symbols_setting.loc[symbol]['tp'])
+                cfg_tp_close_rate = float(symbols_setting.loc[symbol]['tp_close_rate'])
+                cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+                cfg_callback = float(symbols_setting.loc[symbol]['callback'])
+                cfg_active_tl = float(symbols_setting.loc[symbol]['active_tl'])
 
             print(f'{symbol:12} {config.strategy_mode}')
             fibo_data = cal_minmax_fibo(symbol, df, closePrice)
@@ -1281,96 +1256,96 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
                     # ปรับปรุงค่า balance_entry
                     balance_entry[marginType] = balance_entry[marginType] - priceAmt
                     print('balance_entry', balance_entry[marginType])
-                    await spot_enter(exchange, symbol, priceAmt)
+                    refClientOrderId = await spot_enter(exchange, symbol, priceAmt)
                     print(f"[{symbol}] Status : {config.strategy_mode} ENTER PROCESSING...")
                     await cancel_order(exchange, symbol)
                     notify_msg.append(f'สถานะ : {config.strategy_mode}\nEnter\nราคา : {priceEntry}')
 
                     logger.debug(f'{symbol} {config.strategy_mode}\n{df.tail(3)}')
             
-                    # closeRate = 100.0
-                    # priceTL = 0.0
-                    # if TPSLMode == 'on':
-                    #     notify_msg.append(f'# TPSL')
-                    #     if config.TP_PNL_Long > 0:
-                    #         closeRate = config.TP_PNL_Close_Long
-                    #         if config.is_percent_mode:
-                    #             pricetp = price_to_precision(symbol, priceEntry + (costAmount * (config.TP_PNL_Long / 100.0) / amount))
-                    #             fibo_data['tp_txt'] = f'TP PNL: {config.TP_PNL_Long:.2f}% @{pricetp}'
-                    #         else:
-                    #             pricetp = price_to_precision(symbol, priceEntry + (config.TP_PNL_Long / amount))
-                    #             fibo_data['tp_txt'] = f'TP PNL: {config.TP_PNL_Long:.2f}$ @{pricetp}'
-                    #         fibo_data['tp'] = pricetp
-                    #         if config.CB_AUTO_MODE == 1:
-                    #             fibo_data['callback_rate'] = cal_callback_rate(symbol, priceEntry, pricetp)
-                    #         if config.Active_TL_PNL_Long > 0:
-                    #             if config.is_percent_mode:
-                    #                 priceTL = price_to_precision(symbol, priceEntry + (costAmount * (config.Active_TL_PNL_Long / 100.0) / amount))
-                    #             else:
-                    #                 priceTL = price_to_precision(symbol, priceEntry + (config.Active_TL_PNL_Long / amount))
-                    #         callbackLong = config.Callback_PNL_Long
-                    #     else:
-                    #         closeRate = TPCloseLong
-                    #         if TPLong > 0:
-                    #             pricetp = price_to_precision(symbol, priceEntry + (priceEntry * (TPLong / 100.0)))
-                    #             fibo_data['tp_txt'] = f'TP: {TPLong:.2f}% @{pricetp}'
-                    #             fibo_data['tp'] = pricetp
-                    #         else:
-                    #             pricetp = fibo_data['tp']
-                    #             fibo_data['tp_txt'] = f'TP: (AUTO) @{pricetp}'
-                    #         if activeTLLong > 0:
-                    #             priceTL = price_to_precision(symbol, priceEntry + (priceEntry * (activeTLLong / 100.0)))
-                    #     notify_msg.append(fibo_data['tp_txt'])
-                    #     notify_msg.append(f'TP close: {closeRate:.2f}%')
-                    #     if config.SL_PNL_Long > 0:
-                    #         if config.is_percent_mode:
-                    #             pricesl = price_to_precision(symbol, priceEntry - (costAmount * (config.SL_PNL_Long / 100.0) / amount))
-                    #             fibo_data['sl_txt'] = f'SL PNL: {config.SL_PNL_Long:.2f}% @{pricesl}'
-                    #         else:
-                    #             pricesl = price_to_precision(symbol, priceEntry - (config.SL_PNL_Long / amount))
-                    #             fibo_data['sl_txt'] = f'SL PNL: {config.SL_PNL_Long:.2f}$ @{pricesl}'
-                    #         fibo_data['sl'] = pricesl
-                    #         if config.CB_AUTO_MODE != 1:
-                    #             fibo_data['callback_rate'] = cal_callback_rate(symbol, priceEntry, pricesl)
-                    #     elif SLLong > 0:
-                    #         pricesl = price_to_precision(symbol, priceEntry - (priceEntry * (SLLong / 100.0)))
-                    #         fibo_data['sl_txt'] = f'SL: {SLLong:.2f}% @{pricesl}'
-                    #         fibo_data['sl'] = pricesl
-                    #     else:
-                    #         pricesl = fibo_data['sl']
-                    #         fibo_data['sl_txt'] = f'SL: (AUTO) @{pricesl}'
-                    #     notify_msg.append(fibo_data['sl_txt'])
+                    closeRate = 100.0
+                    priceTL = 0.0
+                    if TPSLMode == 'on':
+                        notify_msg.append(f'# TPSL')
+                        if config.tp_pnl > 0:
+                            closeRate = config.tp_pnl_close_rate
+                            if config.is_percent_mode:
+                                priceTP = price_to_precision(symbol, priceEntry + (costAmount * (config.tp_pnl / 100.0) / amount))
+                                fibo_data['tp_txt'] = f'TP PNL: {config.tp_pnl:.2f}% @{priceTP}'
+                            else:
+                                priceTP = price_to_precision(symbol, priceEntry + (config.tp_pnl / amount))
+                                fibo_data['tp_txt'] = f'TP PNL: {config.tp_pnl:.2f}$ @{priceTP}'
+                            fibo_data['tp'] = priceTP
+                            if config.CB_AUTO_MODE == 1:
+                                fibo_data['callback_rate'] = cal_callback_rate(symbol, priceEntry, priceTP)
+                            if config.active_tl_pnl > 0:
+                                if config.is_percent_mode:
+                                    priceTL = price_to_precision(symbol, priceEntry + (costAmount * (config.active_tl_pnl / 100.0) / amount))
+                                else:
+                                    priceTL = price_to_precision(symbol, priceEntry + (config.active_tl_pnl / amount))
+                            cfg_callback = config.callback_pnl
+                        else:
+                            closeRate = cfg_tp_close_rate
+                            if cfg_tp > 0:
+                                priceTP = price_to_precision(symbol, priceEntry + (priceEntry * (cfg_tp / 100.0)))
+                                fibo_data['tp_txt'] = f'TP: {cfg_tp:.2f}% @{priceTP}'
+                                fibo_data['tp'] = priceTP
+                            else:
+                                priceTP = fibo_data['tp']
+                                fibo_data['tp_txt'] = f'TP: (AUTO) @{priceTP}'
+                            if cfg_active_tl > 0:
+                                priceTL = price_to_precision(symbol, priceEntry + (priceEntry * (cfg_active_tl / 100.0)))
+                        notify_msg.append(fibo_data['tp_txt'])
+                        notify_msg.append(f'TP close: {closeRate:.2f}%')
+                        if config.sl_pnl > 0:
+                            if config.is_percent_mode:
+                                priceSL = price_to_precision(symbol, priceEntry - (costAmount * (config.sl_pnl / 100.0) / amount))
+                                fibo_data['sl_txt'] = f'SL PNL: {config.sl_pnl:.2f}% @{priceSL}'
+                            else:
+                                priceSL = price_to_precision(symbol, priceEntry - (config.sl_pnl / amount))
+                                fibo_data['sl_txt'] = f'SL PNL: {config.sl_pnl:.2f}$ @{priceSL}'
+                            fibo_data['sl'] = priceSL
+                            if config.CB_AUTO_MODE != 1:
+                                fibo_data['callback_rate'] = cal_callback_rate(symbol, priceEntry, priceSL)
+                        elif cfg_sl > 0:
+                            priceSL = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_sl / 100.0)))
+                            fibo_data['sl_txt'] = f'SL: {cfg_sl:.2f}% @{priceSL}'
+                            fibo_data['sl'] = priceSL
+                        else:
+                            priceSL = fibo_data['sl']
+                            fibo_data['sl_txt'] = f'SL: (AUTO) @{priceSL}'
+                        notify_msg.append(fibo_data['sl_txt'])
 
-                    #     await spot_TPSL(exchange, symbol, amount, priceEntry, pricetp, pricesl, closeRate)
-                    #     print(f'[{symbol}] Set TP {pricetp} SL {pricesl}')
+                        await spot_TPSL(exchange, symbol, amount, priceEntry, priceTP, priceSL, closeRate, refClientOrderId)
+                        print(f'[{symbol}] Set TP {priceTP} SL {priceSL}')
                         
-                    # if trailingStopMode == 'on' and closeRate < 100.0:
-                    #     notify_msg.append('# TrailingStop')
-                    #     if priceTL == 0.0:
-                    #         # RR = 1
-                    #         activationPrice = price_to_precision(symbol, priceEntry + abs(priceEntry - pricesl))
-                    #     else:
-                    #         activationPrice = priceTL
+                    if trailingStopMode == 'on' and closeRate < 100.0:
+                        notify_msg.append('# TrailingStop')
+                        if priceTL == 0.0:
+                            # RR = 1
+                            activationPrice = price_to_precision(symbol, priceEntry + abs(priceEntry - priceSL))
+                        else:
+                            activationPrice = priceTL
 
-                    #     if callbackLong == 0.0:
-                    #         callbackLong = fibo_data['callback_rate']
-                    #         notify_msg.append(f'Call Back: (AUTO) {callbackLong:.2f}%')
-                    #     else:
-                    #         notify_msg.append(f'Call Back: {callbackLong:.2f}%')
+                        if cfg_callback == 0.0:
+                            cfg_callback = fibo_data['callback_rate']
+                            notify_msg.append(f'Call Back: (AUTO) {cfg_callback:.2f}%')
+                        else:
+                            notify_msg.append(f'Call Back: {cfg_callback:.2f}%')
 
-                    #     activatePrice = await spot_TLSTOP(exchange, symbol, amount, activationPrice, callbackLong)
-                    #     print(f'[{symbol}] Set Trailing Stop {activationPrice:.4f}')
-                    #     # callbackLong_str = ','.join(['{:.2f}%'.format(cb) for cb in callbackLong])
+                        activatePrice = await spot_TLSTOP(exchange, symbol, amount, activationPrice, cfg_callback, refClientOrderId)
+                        print(f'[{symbol}] Set Trailing Stop {activationPrice:.4f}')
+                        # callbackLong_str = ','.join(['{:.2f}%'.format(cb) for cb in callbackLong])
 
-                    #     if priceTL == 0.0:
-                    #         notify_msg.append(f'Active Price: (AUTO) @{activatePrice}')
-                    #     elif config.TP_PNL_Long > 0:
-                    #         if config.is_percent_mode:
-                    #             notify_msg.append(f'Active Price PNL: {config.Active_TL_PNL_Long:.2f}% @{activatePrice}')
-                    #         else:
-                    #             notify_msg.append(f'Active Price PNL: {config.Active_TL_PNL_Long:.2f}$ @{activatePrice}')
-                    #     elif activeTLLong > 0:
-                    #         notify_msg.append(f'Active Price: {activeTLLong:.2f}% @{activatePrice}')
+                        if priceTL == 0.0:
+                            notify_msg.append(f'Active Price: (AUTO) @{activatePrice}')
+                        elif config.tp_pnl > 0:
+                            if config.is_percent_mode:
+                                notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}% @{activatePrice}')
+                            else:
+                                notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}$ @{activatePrice}')
+                        elif cfg_active_tl > 0:
+                            notify_msg.append(f'Active Price: {cfg_active_tl:.2f}% @{activatePrice}')
 
                     fibo_data['tp_txt'] = 'TP'
                     fibo_data['sl_txt'] = 'SL'

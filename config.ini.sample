@@ -42,34 +42,21 @@ cost_type = $
 cost_amount = 50
 
 limit_trade = 20
-
 not_trade = 50
 
 tpsl_mode = off
-;tp_long = 12.0
-;tp_short = 12.0
-;tp_close_long = 50.0
-;tp_close_short = 50.0
-;sl_long = 4.0
-;sl_short = 4.0
+tp = 12.0
+sl = 4.0
+tp_close_rate = 50.0
 
 trailing_stop_mode = off
-;callback_long = 2.5
-;callback_short = 2.5
-;active_tl_long = 10.0
-;active_tl_short = 10.0
+callback = 2.5
+active_tl = 10.0
 
-fast_type = EMA
-fast_value = 8
-mid_type = EMA
-mid_value = 32
-slow_type = EMA
-slow_value = 32
-;# EMA 12,26,26 -> ลุงโฉลง
-;# EMA 8,21,55 -> fibo #1
-;# EMA 8,55,55 -> fibo #2
-;# EMA 8,32,32 -> mao mao
+;# เลือกกำหนดค่า strategy เป็น ema, adxrsi, maomao
+strategy_mode = adxrsi
 
+[indicator]
 ;# MACD, MACDs, MACDh
 ;confirm_macd_by = MACD
 macd_fast = 12
@@ -83,22 +70,25 @@ sto_k_period = 14
 sto_smooth_k = 3
 sto_d_period = 3
 
-strategy_mode = adxrsi
-
 [ema]
+;# enter เมื่อ fast ตัด slow
+;# exter เมื่อ mid ตัด fast
+fast_type = EMA
+fast_value = 8
+mid_type = EMA
+mid_value = 32
+slow_type = EMA
+slow_value = 32
+;# EMA 12,26,26 -> ลุงโฉลง
+;# EMA 8,21,55 -> fibo #1
+;# EMA 8,55,55 -> fibo #2
+;# EMA 8,32,32 -> mao mao
+
 confirm_macd_mode = on
 detect_sideway = on
 sideway_mode = 2
 atr_multiple = 1.5
 rolling_period = 15
-
-[maomao]
-# 1. แท่งเทียน​ อยู่เหนือ​ เส้น​ EMA 35 หรือ​ 32​ ก็ได้
-# 2. MACD > 0
-# 3. แท่งราคาปิด​ break ​แท่งเทียน​ ราคา ​High ก่อนหน้า
-# EMA ในข้อ 1 ให้กำหนดค่าใน setting ดังนี้ mid_type = EMA, mid_value = 35
-# จำนวนวันย้อนหลัง สำหรับใช้ตรวจสัญญาน
-back_days = 3
 
 [adxrsi]
 ;# @อาร์ม setting
@@ -113,6 +103,14 @@ sto_mode = off
 sto_enter = 20
 sto_exit = 80
 
+[maomao]
+# 1. แท่งเทียน​ อยู่เหนือ​ เส้น​ EMA 35 หรือ​ 32​ ก็ได้
+# 2. MACD > 0
+# 3. แท่งราคาปิด​ break ​แท่งเทียน​ ราคา ​High ก่อนหน้า
+ema_period = 35
+# จำนวนวันย้อนหลัง สำหรับใช้ตรวจสัญญาน
+back_days = 3
+
 [symbols_setting]
 ;csv_name = symbol_config.csv
 
@@ -121,24 +119,14 @@ percent_mode = on
 # % of cost for PNL
 # % of margin for Profit
 
-;tp_pnl_long = 0.50
-;tp_pnl_close_rate_long = 25.0
-;sl_pnl_long = 0.25
-;active_tl_pnl_long = 0.50
-;callback_pnl_long = 2.5
+tp_pnl = 0.20
+sl_pnl = 0.05
+tp_pnl_close_rate = 25.0
+active_tl_pnl = 0.20
+callback_pnl = 2.5
 
-;tp_pnl_short = 0.50
-;tp_pnl_close_rate_short = 25.0
-;sl_pnl_short = 0.25
-;active_tl_pnl_short = 0.50
-;callback_pnl_short = 2.5
-
-;tp_profit = 150.0
-;sl_profit = 150.0
-;tp_profit_long = 100.0
-;sl_profit_long = 0.0
-;tp_profit_short = 100.0
-;sl_profit_short = 0.0
+tp_profit = 100.0
+sl_profit = 50.0
 
 clear_margin = 0.01
 

@@ -128,46 +128,44 @@ limit_trade = get_int('setting', 'limit_trade', 10)
 not_trade = get_float('setting', 'not_trade', 10.0)
 
 tpsl_mode = get_str('setting', 'tpsl_mode', 'on')
+tp = get_float('setting', 'tp', 0.0)
+sl = get_float('setting', 'sl', 0.0)
+tp_close_rate = get_float('setting', 'tp_close_rate', 50.0)
 
-tp_long = get_float('setting', 'tp_long', 0.0)
-tp_close_long = get_float('setting', 'tp_close_long', 50.0)
-sl_long = get_float('setting', 'sl_long', 0.0)
 trailing_stop_mode = get_str('setting', 'trailing_stop_mode', 'on')
-
-callback_long = get_float('setting', 'callback_long', 0.0)
-if callback_long > 5.0:
-    print(f'callback rate ranges from 0.1% to 5%, set to 5.0%')
-    callback_long = 5.0
-elif callback_long < 0.1:
-    print(f'callback rate ranges from 0.1% to 5%, set to 0.0')
-    callback_long = 0.0
-
-active_tl_long = get_float('setting', 'active_tl_long', 0.0)
+callback = get_float('setting', 'callback', 0.0)
+active_tl = get_float('setting', 'active_tl', 0.0)
 
 strategy_mode = get_str('setting', 'strategy_mode', 'maomao').upper()
 
-fast_type = get_str('setting', 'fast_type')
-fast_value = get_int('setting', 'fast_value')
-mid_type = get_str('setting', 'mid_type')
-mid_value = get_int('setting', 'mid_value')
-slow_type = get_str('setting', 'slow_type')
-slow_value = get_int('setting', 'slow_value')
+#------------------------------------------------------------
+# indicator (share)
+#------------------------------------------------------------
+MID_TYPE = 'EMA'
+MID_VALUE = 35
 
-MACD_FAST = get_int('setting', 'macd_fast')
-MACD_SLOW = get_int('setting', 'macd_slow')
-MACD_SIGNAL = get_int('setting', 'macd_signal')
+MACD_FAST = get_int('indicator', 'macd_fast')
+MACD_SLOW = get_int('indicator', 'macd_slow')
+MACD_SIGNAL = get_int('indicator', 'macd_signal')
 
-RSI_PERIOD = get_int('setting', 'rsi_period')
+ADX_PERIOD = get_int('indicator', 'adx_period', 14)
+RSI_PERIOD = get_int('indicator', 'rsi_period', 14)
 
-ADXPeriod = get_int('setting', 'adx_period', 14)
-
-STO_K_PERIOD = get_int('setting', 'sto_k_period', 14)
-STO_SMOOTH_K = get_int('setting', 'sto_smooth_k', 3)
-STO_D_PERIOD = get_int('setting', 'sto_d_period', 3)
+STO_K_PERIOD = get_int('indicator', 'sto_k_period', 14)
+STO_SMOOTH_K = get_int('indicator', 'sto_smooth_k', 3)
+STO_D_PERIOD = get_int('indicator', 'sto_d_period', 3)
 
 #------------------------------------------------------------
 # ema
 #------------------------------------------------------------
+FAST_TYPE = get_str('ema', 'fast_type').upper()
+FAST_VALUE = get_int('ema', 'fast_value')
+if strategy_mode == 'EMA':
+    MID_TYPE = get_str('ema', 'mid_type').upper()
+    MID_VALUE = get_int('ema', 'mid_value')
+SLOW_TYPE = get_str('ema', 'slow_type').upper()
+SLOW_VALUE = get_int('ema', 'slow_value')
+
 confirm_macd_by = get_str('ema', 'confirm_macd_by', 'MACD')
 confirm_macd_mode = get_str('ema', 'confirm_macd_mode', 'on') == 'on'
 is_detect_sideway = get_str('ema', 'detect_sideway', 'on') == 'on'
@@ -191,6 +189,9 @@ sto_exit = get_int('adxrsi', 'sto_exit', 80)
 #------------------------------------------------------------
 # maomao
 #------------------------------------------------------------
+if strategy_mode == 'MAOMAO':
+    MID_TYPE = 'EMA'
+    MID_VALUE = get_int('maomao', 'ema_period', 35)
 back_days = get_int('maomao', 'back_days', 3)
 
 #------------------------------------------------------------
@@ -203,24 +204,15 @@ CSV_NAME = get_str('symbols_setting', 'csv_name', None)
 #------------------------------------------------------------
 is_percent_mode = get_str('mm', 'percent_mode', 'off') == 'on'
 
-TP_PNL_Long = get_float('mm', 'tp_pnl_long', 0.0)
-SL_PNL_Long = get_float('mm', 'sl_pnl_long', 0.0)
+tp_pnl = get_float('mm', 'tp_pnl', 0.0)
+sl_pnl = get_float('mm', 'sl_pnl', 0.0)
+tp_pnl_close_rate = get_float('mm', 'tp_pnl_close_rate', 50.0)
+active_tl_pnl = get_float('mm', 'active_tl_pnl', 0.0)
+callback_pnl = get_float('mm', 'callback_pnl', 0.0)
 
-TP_PNL_Close_Long = get_float('mm', 'tp_pnl_close_rate_long', 50.0)
+tp_profit = get_float('mm', 'tp_profit', 0.0)
+sl_profit = get_float('mm', 'sl_profit', 0.0)
 
-Callback_PNL_Long = get_float('mm', 'callback_pnl_long', 0.0)
-if Callback_PNL_Long > 5.0:
-    print(f'callback rate ranges from 0.1% to 5%, set to 5.0%')
-    Callback_PNL_Long = 5.0
-elif Callback_PNL_Long < 0.1:
-    print(f'callback rate ranges from 0.1% to 5%, set to 0.0')
-    Callback_PNL_Long = 0.0
+clear_margin = get_float('mm', 'clear_margin', 0.01)
 
-Active_TL_PNL_Long = get_float('mm', 'active_tl_pnl_long', 0.0)
-
-TP_Profit = get_float('mm', 'tp_profit', 0.0)
-SL_Profit = get_float('mm', 'sl_profit', 0.0)
-
-Clear_Magin = get_float('mm', 'clear_margin', 0.01)
-
-Loss_Limit = get_int('mm', 'loss_limit', 0)
+loss_limit = get_int('mm', 'loss_limit', 0)

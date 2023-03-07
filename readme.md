@@ -3,8 +3,8 @@
 ## mao spot bitkub
 สามารถกำหนด strategy ที่ต้องการได้
 - ema ใช้เส้นตัด slow mid fast
-- maomao ใช้เส้น ema และ macd
 - adxrsi ใช้ adx และ rsi และ/หรือ sto
+- maomao ใช้เส้น ema และ macd
 
 ## config.ini (rename จาก config.ini.sample)
 
@@ -82,21 +82,34 @@
 
     ; ห้ามเปิดใช้ เพราะยังไม่ทำงาน
     tpsl_mode = off
-    ;tp_long = 10.0
-    ;tp_short = 10.0
-    ;tp_close_long = 50.0
-    ;tp_close_short = 50.0
-    ;sl_long = 4.0
-    ;sl_short = 4.0
+    ;tp = 10.0
+    ;sl = 4.0
+    ;tp_close_rate = 50.0
 
     ; ห้ามเปิดใช้ เพราะยังไม่ทำงาน
     trailing_stop_mode = off
-    ;callback_long = 5.0
-    ;callback_short = 5.0
-    ;active_tl_long = 10.0
-    ;active_tl_short = 10.0
+    ;callback = 5.0
+    ;active_tl = 10.0
 
-    ; ระบุ type fast,slow => EMA, SMA, HMA, RMA, WMA, VWMA
+    ;# กำหนด strategy เป็น ema, maomao, adxrsi
+    strategy_mode = adxrsi
+
+    [indicator]
+    ;# macd
+    macd_fast = 12
+    macd_slow = 26
+    macd_signal = 9
+
+    ; สำหรับคำนวน adx rsi sto, default คือค่ามาตราฐาน
+    adx_period = 14
+    rsi_period = 14
+    sto_k_period = 14
+    sto_smooth_k = 3
+    sto_d_period = 3
+
+    [ema]
+    ;# enter เมื่อ fast ตัด slow
+    ;# exter เมื่อ mid ตัด fast
     fast_type = EMA
     fast_value = 8
     mid_type = EMA
@@ -104,22 +117,10 @@
     slow_type = EMA
     slow_value = 32
 
-    ; สำหรับคำนวน macd, default คือค่ามาตราฐาน
-    macd_fast = 12
-    macd_slow = 26
-    macd_signal = 9
-
-    ; สำหรับคำนวน rsi sto, default คือค่ามาตราฐาน
-    rsi_period = 14
-    sto_k_period = 14
-    sto_smooth_k = 3
-    sto_d_period = 3
-
-    ; กำหนด strategy เป็น ema, maomao, adxrsi
-    strategy_mode = adxrsi
-
-    [ema]
     confirm_macd_mode = on
+    ; สำหรับคำนวน macd, default คือค่ามาตราฐาน
+    ;# MACD, MACDs, MACDh
+    ;confirm_macd_by = MACD
     detect_sideway = on
     sideway_mode = 2
     atr_multiple = 1.5
@@ -129,7 +130,7 @@
     # 1. แท่งเทียน​ อยู่เหนือ​ เส้น​ EMA 35 หรือ​ 32​ ก็ได้
     # 2. MACD > 0
     # 3. แท่งราคาปิด​ break ​แท่งเทียน​ ราคา ​High ก่อนหน้า
-    # EMA ในข้อ 1 ให้กำหนดค่าใน setting ดังนี้ mid_type = EMA, mid_value = 35
+    ema_period = 35
     # จำนวนวันย้อนหลัง สำหรับใช้ตรวจสัญญาน
     back_days = 3
 
@@ -153,32 +154,22 @@
 
     ; (mm ยังใช่ไม่ได้)
     [mm]
-    ;# ต้องให้คำนวน TP/SL auto ให้กำหนดค่า tp_pnl_long, tp_pnl_short, sl_pnl_long, sl_pnl_short เป็น 0.0 
+    ;# ต้องการให้คำนวน TP/SL auto ให้กำหนดค่า tp_pnl, sl_pnl เป็น 0.0 
     ;# ค่าตัวแปรต่างๆ กำหนดค่าเป็น 0 หรือ comment ถ้าต้องการปิดการทำงาน
 
     ;# TP/SL แบบ PNL เพื่อปิด position โดยใช้ค่า PNL amount มาเป็นตัวกำหนด
 
     ;# ใส่ค่าเป็น amount (percent_mode=off) หรือ % (percent_mode=on) จะคำนวน amount ให้จาก % x cost_amount
-    ;# ค่า close_rate ใส่เป็น % เท่านั้น
-    ;# callback rate ranges from 0.1% to 5%, 0.0 for auto
+    ;# ค่า close_rate ใส่เป็น % เท่านั้น, 0.0 for auto
 
     percent_mode = on
 
-    ;# ส่วนนี้ใช้กับ long position
-    tp_pnl_long = 0.30
-    tp_pnl_close_rate_long = 25.0
-    sl_pnl_long = 0.10
+    tp_pnl = 0.30
+    sl_pnl = 0.10
+    tp_pnl_close_rate = 25.0
     ;# ค่า active tl ถ้ากำหนดเป็น 0.0 เพื่อให้บอทคำนวนค่าให้
-    active_tl_pnl_long = 0.0
-    callback_pnl_long = 5.0
-
-    ;# ส่วนนี้ใช้กับ short position
-    tp_pnl_short = 0.30
-    tp_pnl_close_rate_short = 25.0
-    sl_pnl_short = 0.10
-    ;# ค่า active tl ถ้ากำหนดเป็น 0.0 เพื่อให้บอทคำนวนค่าให้
-    active_tl_pnl_short = 0.0
-    callback_pnl_short = 5.0
+    active_tl_pnl = 0.0
+    callback_pnl = 5.0
 
     ;# TP/SL Profit เพื่อปิด positions ทั้งหมด โดยใช้ค่าผลรวมของ profit มาเป็นตัวกำหนด 
     ;# จะทำจะงานตามรอบเวลาที่กำหนดไว้ที่ MM_TIMER_MIN
@@ -186,14 +177,6 @@
     ;# ส่วนนี้สำหรับคำนวนรวมทุก positions
     ;tp_profit = 1.5
     ;sl_profit = 1.4
-
-    ;# ส่วนนี้สำหรับคำนวนแยก long position (ถ้ากำหนดแบบรวมไว้ ค่านี้จะไม่ถูกใช้)
-    tp_profit_long = 3.0
-    sl_profit_long = 1.5
-
-    ;# ส่วนนี้สำหรับคำนวนแยก short position (ถ้ากำหนดแบบรวมไว้ ค่านี้จะไม่ถูกใช้)
-    tp_profit_short = 3.0
-    sl_profit_short = 1.5
 
     ;# กำหนดค่าการปิด position ที่มี margin น้อยกว่า clear_margin, default คีอ 0.01
     clear_margin = 0.01
