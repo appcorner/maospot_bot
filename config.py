@@ -141,8 +141,8 @@ strategy_mode = get_str('setting', 'strategy_mode', 'maomao').upper()
 #------------------------------------------------------------
 # indicator (share)
 #------------------------------------------------------------
-MID_TYPE = 'EMA'
-MID_VALUE = 35
+mid_type = 'EMA'
+mid_value = 35
 
 MACD_FAST = get_int('indicator', 'macd_fast')
 MACD_SLOW = get_int('indicator', 'macd_slow')
@@ -158,13 +158,13 @@ STO_D_PERIOD = get_int('indicator', 'sto_d_period', 3)
 #------------------------------------------------------------
 # ema
 #------------------------------------------------------------
-FAST_TYPE = get_str('ema', 'fast_type').upper()
-FAST_VALUE = get_int('ema', 'fast_value')
+fast_type = get_str('ema', 'fast_type').upper()
+fast_value = get_int('ema', 'fast_value')
 if strategy_mode == 'EMA':
-    MID_TYPE = get_str('ema', 'mid_type').upper()
-    MID_VALUE = get_int('ema', 'mid_value')
-SLOW_TYPE = get_str('ema', 'slow_type').upper()
-SLOW_VALUE = get_int('ema', 'slow_value')
+    mid_type = get_str('ema', 'mid_type').upper()
+    mid_value = get_int('ema', 'mid_value')
+slow_type = get_str('ema', 'slow_type').upper()
+slow_value = get_int('ema', 'slow_value')
 
 confirm_macd_by = get_str('ema', 'confirm_macd_by', 'MACD')
 confirm_macd_mode = get_str('ema', 'confirm_macd_mode', 'on') == 'on'
@@ -190,8 +190,8 @@ sto_exit = get_int('adxrsi', 'sto_exit', 80)
 # maomao
 #------------------------------------------------------------
 if strategy_mode == 'MAOMAO':
-    MID_TYPE = 'EMA'
-    MID_VALUE = get_int('maomao', 'ema_period', 35)
+    mid_type = 'EMA'
+    mid_value = get_int('maomao', 'ema_period', 35)
 back_days = get_int('maomao', 'back_days', 3)
 
 #------------------------------------------------------------

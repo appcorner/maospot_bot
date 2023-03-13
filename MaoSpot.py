@@ -58,7 +58,7 @@ TIMEFRAME_SECONDS = {
 }
 
 CANDLE_PLOT = config.CANDLE_PLOT
-CANDLE_SAVE = CANDLE_PLOT + max(config.MID_VALUE,config.SLOW_VALUE,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
+CANDLE_SAVE = CANDLE_PLOT + max(config.mid_value,config.slow_value,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
 CANDLE_LIMIT = max(config.CANDLE_LIMIT,CANDLE_SAVE)
 
 UB_TIMER_SECONDS = [
@@ -661,12 +661,12 @@ def add_indicator(symbol, bars):
     df['STOCHd'] = 0
 
     try:
-        fastType = config.FAST_TYPE 
-        fastValue = config.FAST_VALUE
-        midType = config.MID_TYPE 
-        midValue = config.MID_VALUE        
-        slowType = config.SLOW_TYPE 
-        slowValue = config.SLOW_VALUE
+        fastType = config.fast_type 
+        fastValue = config.fast_value
+        midType = config.mid_type 
+        midValue = config.mid_value        
+        slowType = config.slow_type 
+        slowValue = config.slow_value
         ADXPeriod = config.ADX_PERIOD
 
         if symbol in symbols_setting.index:
@@ -865,6 +865,8 @@ def update_order_history(symbol, orderType:str, order, params={}):
             position_info['price'] = order['price']
             position_info['amount'] = order['amount']
             position_info['cost'] = order['cost']
+            if 'lastPrice' in params.keys():
+                position_info['last_price'] = params['lastPrice']
             orders_history[symbol]['positions'][positionSide]['status'] = 'open'
         elif orderType.lower() == 'tp':
             position_info['tp_price'] = params['stopPrice']
@@ -905,9 +907,13 @@ async def update_open_orders(exchange, symbol):
         # logger.debug(f'{symbol} update_open_orders {open_orders}')
         for idx in range(0, len(open_orders)):
             order = open_orders.loc[idx]
-            if order['side'] == 'buy':
+            if order['side'] == 'buy' \
+                and ( symbol not in orders_history.keys() \
+                or order['clientOrderId'] not in orders_history[symbol]['positions']['spot']['infos'].keys() ):
                 update_order_history(symbol, 'open', order, params={})
-                total_cost += order['cost']
+            # else:
+            #     print(f'{symbol} is in orders')
+            total_cost += order['cost']
         return total_cost
     except Exception as ex:
         print(type(ex).__name__, symbol, str(ex))
@@ -959,7 +965,7 @@ async def spot_enter(exchange, symbol, amount, tf=config.timeframe):
     # print("Status : LONG ENTERING PROCESSING...")
     logger.debug(f'{symbol} spot_enter {str(order)}')
     open_order_history(symbol, 'spot')
-    update_order_history(symbol, 'open', order)
+    update_order_history(symbol, 'open', order, params={'lastPrice':ask})
     await sleep(1)
     return params['client_id']
 #-------------------------------------------------------------------------------
@@ -1091,7 +1097,66 @@ def maomao(df, signalIdx):
             last3rd['MACD'] > 0:
             return (False,True)
     return (False,False)
-    
+
+def cal_tpsl(symbol, amount, priceEntry, fibo_data):
+    costAmount = config.cost_amount
+    cfg_tp = config.tp
+    cfg_tp_close_rate = config.tp_close_rate
+    cfg_sl = config.sl
+    cfg_callback = config.callback
+    cfg_active_tl = config.active_tl
+    if symbol in symbols_setting.index:
+        cfg_tp = float(symbols_setting.loc[symbol]['tp'])
+        cfg_tp_close_rate = float(symbols_setting.loc[symbol]['tp_close_rate'])
+        cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+        cfg_callback = float(symbols_setting.loc[symbol]['callback'])
+        cfg_active_tl = float(symbols_setting.loc[symbol]['active_tl'])
+    if config.tp_pnl > 0:
+        closeRate = config.tp_pnl_close_rate
+        if config.is_percent_mode:
+            priceTP = price_to_precision(symbol, priceEntry + (costAmount * (config.tp_pnl / 100.0) / amount))
+        else:
+            priceTP = price_to_precision(symbol, priceEntry + (config.tp_pnl / amount))
+        if config.CB_AUTO_MODE == 1:
+            callback_rate = cal_callback_rate(symbol, priceEntry, priceTP)
+        if config.active_tl_pnl > 0:
+            if config.is_percent_mode:
+                priceTL = price_to_precision(symbol, priceEntry + (costAmount * (config.active_tl_pnl / 100.0) / amount))
+            else:
+                priceTL = price_to_precision(symbol, priceEntry + (config.active_tl_pnl / amount))
+        cfg_callback = config.callback_pnl
+    else:
+        closeRate = cfg_tp_close_rate
+        if cfg_tp > 0:
+            priceTP = price_to_precision(symbol, priceEntry + (priceEntry * (cfg_tp / 100.0)))
+        else:
+            priceTP = fibo_data['tp']
+        if cfg_active_tl > 0:
+            priceTL = price_to_precision(symbol, priceEntry + (priceEntry * (cfg_active_tl / 100.0)))
+
+    if config.sl_pnl > 0:
+        if config.is_percent_mode:
+            priceSL = price_to_precision(symbol, priceEntry - (costAmount * (config.sl_pnl / 100.0) / amount))
+        else:
+            priceSL = price_to_precision(symbol, priceEntry - (config.sl_pnl / amount))
+        if config.CB_AUTO_MODE != 1:
+            callback_rate = cal_callback_rate(symbol, priceEntry, priceSL)
+    elif cfg_sl > 0:
+        priceSL = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_sl / 100.0)))
+    else:
+        priceSL = fibo_data['sl']
+
+    if priceTL == 0.0:
+        # RR = 1
+        activationPrice = price_to_precision(symbol, priceEntry + abs(priceEntry - priceSL))
+    else:
+        activationPrice = priceTL
+
+    if cfg_callback == 0.0:
+        cfg_callback = callback_rate
+
+    return (priceTP, priceSL, closeRate, activationPrice, cfg_callback)
+
 async def go_trade(exchange, symbol, chkLastPrice=True):
     global all_positions, balance_entry, count_trade
 
@@ -1347,8 +1412,6 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
                         elif cfg_active_tl > 0:
                             notify_msg.append(f'Active Price: {cfg_active_tl:.2f}% @{activatePrice}')
 
-                    fibo_data['tp_txt'] = 'TP'
-                    fibo_data['sl_txt'] = 'SL'
                     gather( line_chart(symbol, df, '\n'.join(notify_msg), config.strategy_mode, fibo_data, **kwargs) )
                 
             elif tradeMode != 'on' :
@@ -1450,10 +1513,64 @@ async def fetch_next_ohlcv(next_ticker):
         if exchange:
             await exchange.close()
 
-# async def mm_strategy():
-#     global is_send_notify_risk
-#     try:
-#         exchange = await getExchange()
+async def mm_strategy():
+    global all_positions, is_send_notify_risk
+    try:
+        print('MM processing...')
+        exchange = await getExchange()
+
+        tickets = await exchange.fetch_tickers()
+        # print(tickets)
+        balance = await exchange.fetch_balance()
+        # print(balance)
+
+        marginType = config.margin_type[0]
+
+        ex_balances = balance['balances']
+        mm_positions = [b for b in ex_balances if float(b['total']) != 0 
+                    and b['asset'] != marginType
+                    and f"{marginType}_{b['asset']}" in watch_list]
+
+        # SL
+        exit_loops = []
+        cancel_loops = []
+        mm_notify = []
+        # exit all positions
+        for position in mm_positions:
+            symbol = f"{marginType}_{position['asset']}"
+            marketPrice = tickets[symbol]['last'] if symbol in tickets.keys() else 0.0
+            position_infos = orders_history[symbol]['positions']['spot']['infos']
+            for coid in position_infos.keys():
+                if 'sl_price' in position_infos[coid].keys():
+                    if position_infos[coid]['sl_price'] <= marketPrice:
+                        last_price = position_infos[coid]['last_price']
+                        sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
+                        if sl_percent < 0.04:
+                            sl_percent = 0.04
+                        new_sl = marketPrice * (1.0 - sl_percent)
+                        if position_infos[coid]['sl_price'] < new_sl:
+                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}, new SL:{new_sl:.8f}")
+                            position_infos[coid]['last_price'] = marketPrice
+                            position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                        # else:
+                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}")
+                    else:
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f}, {sl_percent:.4f}")
+                        positionAmt = position_infos[coid]['amount']
+                        exit_loops.append(spot_close(exchange, symbol, positionAmt))
+                        mm_notify.append(f'{symbol} : MM SL Exit')
+                        # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
+        try:
+            if len(exit_loops) > 0:
+                await gather(*exit_loops)
+                hasMMPositions = True
+        except Exception as ex:
+            print(type(ex).__name__, str(ex))
+            logger.exception('mm_strategy sl exit')
+
+        if len(mm_notify) > 0:
+            txt_notify = '\n'.join(mm_notify)
+            line_notify(f'\nสถานะ...\n{txt_notify}')
 
 #         hasMMPositions = False
 #         balance = await exchange.fetch_balance()
@@ -1651,14 +1768,14 @@ async def fetch_next_ohlcv(next_ticker):
 #                     print(f'{symbol} removed from watch_list, last loss = {orders_history[symbol]["last_loss"]}')
 #                     logger.info(f'{symbol} removed from watch_list, last loss = {orders_history[symbol]["last_loss"]}')
 
-#     except Exception as ex:
-#         print(type(ex).__name__, str(ex))
-#         logger.exception('mm_strategy')
-#         line_notify_err(f'แจ้งปัญหาระบบ mm\nข้อผิดพลาด: {str(ex)}')
+    except Exception as ex:
+        print(type(ex).__name__, str(ex))
+        logger.exception('mm_strategy')
+        line_notify_err(f'แจ้งปัญหาระบบ mm\nข้อผิดพลาด: {str(ex)}')
 
-#     finally:
-#         if exchange:
-#             await exchange.close()
+    finally:
+        if exchange:
+            await exchange.close()
 
 async def update_all_balance(notifyLine=False, updateOrder=False):
     global all_positions, balance_entry, balalce_total, count_trade, orders_history
@@ -1682,12 +1799,13 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         all_positions = pd.DataFrame(balances, columns=BALANCE_COLUMNS)
         # all_positions.rename(columns={"asset": "symbol"}, inplace=True)
         all_positions["symbol"] = all_positions["asset"].apply(lambda x: f'{marginType}_{x}')
-        all_positions.reset_index(drop=True, inplace=True)
-        all_positions.index = all_positions.index + 1
+        # all_positions.reset_index(drop=True, inplace=True)
+        # all_positions.index = all_positions.index + 1
         
         all_positions["marketPrice"] = all_positions['symbol'].apply(lambda x: tickets[x]['last'] 
                                                                      if x in tickets.keys() else 0.0)
         all_positions['unrealizedPrice'] = all_positions['total'].astype('float64') * all_positions["marketPrice"].astype('float64')
+        all_positions['unrealizedPrice'] = all_positions['unrealizedPrice'].round(4)
 
         # all_positions["cost"] = all_positions['symbol'].apply(lambda x: await update_open_orders(exchange, x))
         # update open order
@@ -1705,7 +1823,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
                     if len(infos.keys()) == 0:
                         return 0.0
                     else:
-                        return sum(infos[k]['cost'] for k in infos.keys())
+                        return sum(infos[k]['cost'] if 'cost' in infos[k].keys() else 0.0 for k in infos.keys())
                 else:
                     return 0.0
             all_positions["Margin"] = all_positions['symbol'].apply(lambda x: f(x))
@@ -1731,6 +1849,8 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         balalce_total = balance_entry[marginType] + sumUnrealizedPrice
 
         if len(all_positions) > 0:
+            all_positions.sort_values(by=['unrealizedProfit'], ignore_index=True, ascending=False, inplace=True)
+            all_positions.index = all_positions.index + 1
             print(all_positions[BALANCE_COLUMNS_DISPLAY])
         else:
             print('No Balances')
@@ -1816,6 +1936,8 @@ async def load_symbols_setting():
 async def main():
     global start_balance_total, is_send_notify_risk
 
+    # pd.set_option('display.float_format', '{:.2f}'.format)
+
     marginList = ','.join(config.margin_type)
     if config.SANDBOX:
         bot_title = f'{bot_fullname} - {config.strategy_mode} - {config.timeframe} - {marginList} - (SANDBOX)'
@@ -1897,10 +2019,10 @@ async def main():
 
             else:
                 # # mm strategy
-                # if config.Trade_Mode == 'on' and seconds >= next_ticker_mm:
-                #     await mm_strategy()
-                #     next_ticker_mm += time_wait_mm
-                #     line_notify_last_err()
+                if config.trade_mode == 'on' and seconds >= next_ticker_mm:
+                    await mm_strategy()
+                    next_ticker_mm += time_wait_mm
+                    line_notify_last_err()
                 # display position
                 if config.trade_mode == 'on' and seconds >= next_ticker_ub + TIME_SHIFT:
                     # set cursor At top, left (1,1)
