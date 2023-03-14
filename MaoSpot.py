@@ -909,6 +909,7 @@ async def update_open_orders(exchange, symbol):
             order = open_orders.loc[idx]
             if order['side'] == 'buy' \
                 and ( symbol not in orders_history.keys() \
+                or 'spot' not in orders_history[symbol]['positions'].keys() \
                 or order['clientOrderId'] not in orders_history[symbol]['positions']['spot']['infos'].keys() ):
                 update_order_history(symbol, 'open', order, params={})
             # else:
