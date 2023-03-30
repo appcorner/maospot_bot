@@ -210,6 +210,10 @@ tp_pnl_close_rate = get_float('mm', 'tp_pnl_close_rate', 50.0)
 active_tl_pnl = get_float('mm', 'active_tl_pnl', 0.0)
 callback_pnl = get_float('mm', 'callback_pnl', 0.0)
 
+adaptive_price_grid = get_float('mm', 'adaptive_price_grid', 5.0)
+adaptive_tl_rate = get_float('mm', 'adaptive_tl_rate', 10.0)
+min_tl_rate = get_float('mm', 'min_tl_rate', 0.5)
+
 tp_profit = get_float('mm', 'tp_profit', 0.0)
 sl_profit = get_float('mm', 'sl_profit', 0.0)
 

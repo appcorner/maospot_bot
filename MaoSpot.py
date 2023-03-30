@@ -58,7 +58,7 @@ TIMEFRAME_SECONDS = {
 }
 
 CANDLE_PLOT = config.CANDLE_PLOT
-CANDLE_SAVE = CANDLE_PLOT + max(config.mid_value,config.slow_value,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
+CANDLE_SAVE = 1 + max(config.mid_value,config.slow_value,config.MACD_SLOW,config.RSI_PERIOD,config.rolling_period)
 CANDLE_LIMIT = max(config.CANDLE_LIMIT,CANDLE_SAVE)
 
 UB_TIMER_SECONDS = [
@@ -105,7 +105,7 @@ all_positions = pd.DataFrame(columns=BALANCE_COLUMNS)
 count_trade = 0
 
 start_balance_total = 0.0
-balalce_total = 0.0
+balance_total = 0.0
 balance_entry = {}
 
 watch_list = []
@@ -645,7 +645,7 @@ def add_indicator(symbol, bars):
     df = df.tail(CANDLE_LIMIT)
 
     if len(df) < CANDLE_SAVE:
-        print(f'less candles ({len(df)}) for {symbol}, skip add_indicator')
+        # print(f'less candles ({len(df)}/{CANDLE_SAVE}) for {symbol}, skip add_indicator')
         return df
 
     # คำนวนค่าต่างๆใหม่
@@ -783,7 +783,7 @@ async def fetch_ohlcv(exchange, symbol, timeframe, limit=1, timestamp=0):
             # print(symbol, 'candles:', len(all_candles[symbol]))
         if symbol not in all_candles.keys():
             watch_list.remove(symbol)
-            print(f'{symbol} is no candlesticks, removed from watch_list')
+            # print(f'{symbol} is no candlesticks, removed from watch_list')
             logger.debug(f'{symbol} is no candlesticks, removed from watch_list')
             # print(symbol)
     except Exception as ex:
@@ -1063,7 +1063,7 @@ async def cal_amount(exchange, symbol, leverage, costType, costAmount, closePric
     #     amount =  minCost / float(leverage) / priceEntry * 1.1 
     else:
         # amount = (float(balance_entry)/100) * costAmount * float(leverage) / priceEntry
-        amount = (float(balalce_total)/100) * costAmount * float(leverage) / priceEntry
+        amount = (float(balance_total)/100) * costAmount * float(leverage) / priceEntry
 
     p_amount = amount_to_precision(symbol, amount)
     p_priceAmt = amount_to_precision(symbol, amount * priceEntry / leverage)
@@ -1176,7 +1176,7 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
     if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
         df = all_candles[symbol]
     else:
-        print(f'not found candles for {symbol} candlesticks')
+        # print(f'not found candles for {symbol} candlesticks')
         return
     # อ่านข้อมูล leverage ที่เก็บไว้ใน all_symbols
     if symbol in all_symbols.keys():
@@ -1537,6 +1537,7 @@ async def mm_strategy():
         cancel_loops = []
         mm_notify = []
         # exit all positions
+        min_tl_rate = config.min_tl_rate / 100.0
         for position in mm_positions:
             symbol = f"{marginType}_{position['asset']}"
             marketPrice = tickets[symbol]['last'] if symbol in tickets.keys() else 0.0
@@ -1546,21 +1547,26 @@ async def mm_strategy():
                     if position_infos[coid]['sl_price'] <= marketPrice:
                         last_price = position_infos[coid]['last_price']
                         sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
-                        if sl_percent < 0.04:
-                            sl_percent = 0.04
+                        if sl_percent < min_tl_rate:
+                            sl_percent = min_tl_rate
                         new_sl = marketPrice * (1.0 - sl_percent)
                         if position_infos[coid]['sl_price'] < new_sl:
-                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}, new SL:{new_sl:.8f}")
+                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%, new SL:{new_sl:.8f}")
                             position_infos[coid]['last_price'] = marketPrice
                             position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
                         # else:
-                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}")
+                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
                     else:
-                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f}, {sl_percent:.4f}")
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f}")
                         positionAmt = position_infos[coid]['amount']
                         exit_loops.append(spot_close(exchange, symbol, positionAmt))
                         mm_notify.append(f'{symbol} : MM SL Exit')
                         # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
+                else:
+                    new_sl = marketPrice * (1.0 - min_tl_rate)
+                    print(f"[{symbol}] SL new SL:{new_sl:.8f}")
+                    position_infos[coid]['last_price'] = marketPrice
+                    position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
         try:
             if len(exit_loops) > 0:
                 await gather(*exit_loops)
@@ -1779,7 +1785,7 @@ async def mm_strategy():
             await exchange.close()
 
 async def update_all_balance(notifyLine=False, updateOrder=False):
-    global all_positions, balance_entry, balalce_total, count_trade, orders_history
+    global all_positions, balance_entry, balance_total, count_trade, orders_history
     try:
         exchange = await getExchange()
 
@@ -1792,7 +1798,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         marginType = config.margin_type[0]
 
         ex_balances = balance['balances']
-        balances = [b for b in ex_balances if float(b['total']) != 0 
+        balances = [b for b in ex_balances if float(b['free']) != 0.0 
                     and b['asset'] != marginType
                     and f"{marginType}_{b['asset']}" in watch_list]
         # balances = [b for b in ex_balances if float(b['total']) != 0]
@@ -1830,6 +1836,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
             all_positions["Margin"] = all_positions['symbol'].apply(lambda x: f(x))
 
         all_positions["unrealizedProfit"] = all_positions['unrealizedPrice'] - all_positions["Margin"]
+        all_positions['unrealizedProfit'] = all_positions['unrealizedProfit'].round(4)
 
         count_trade = len(all_positions)
 
@@ -1847,7 +1854,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         sumUnrealizedPrice =  all_positions['unrealizedPrice'].astype('float64').sum()
         sumUnrealizedProfit =  all_positions['unrealizedProfit'].astype('float64').sum()
 
-        balalce_total = balance_entry[marginType] + sumUnrealizedPrice
+        balance_total = balance_entry[marginType] + sumUnrealizedPrice
 
         if len(all_positions) > 0:
             all_positions.sort_values(by=['unrealizedProfit'], ignore_index=True, ascending=False, inplace=True)
@@ -1858,9 +1865,9 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
 
         ub_msg.append(f"# {marginType}\nFree: {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f}\nPrice: {sumUnrealizedPrice:,.2f}\nProfit: {sumUnrealizedProfit:,.2f}")
         print(f"Balance === {marginType} Free: {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f} Price: {sumUnrealizedPrice:,.2f} Profit: {sumUnrealizedProfit:,.2f}")
-        balance_change = balalce_total - start_balance_total if start_balance_total > 0 else 0
-        ub_msg.append(f"# Total {balalce_total:,.2f}\n# Change {balance_change:+,.2f}")
-        print(f"Total ===== {balalce_total:,.2f} Change: {balance_change:+,.2f}")
+        balance_change = balance_total - start_balance_total if start_balance_total > 0 else 0
+        ub_msg.append(f"# Total {balance_total:,.2f}\n# Change {balance_change:+,.2f}")
+        print(f"Total ===== {balance_total:,.2f} Change: {balance_change:+,.2f}")
 
         if notifyLine:
             notify.Send_Text('\n'.join(ub_msg))
@@ -1956,7 +1963,7 @@ async def main():
 
     # แสดงค่า positions & balance
     await update_all_balance(notifyLine=config.summary_report, updateOrder=True)
-    start_balance_total = balalce_total
+    start_balance_total = balance_total
 
     # if config.IS_CLEAR_OLD_ORDER:
     #     await close_non_position_order(watch_list, all_positions['symbol'].to_list())
