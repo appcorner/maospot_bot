@@ -122,10 +122,6 @@ is_positionside_dual = False
 is_send_notify_error = True
 last_error_message = ''
 
-RSI30 = [30 for i in range(0, CANDLE_PLOT)]
-RSI50 = [50 for i in range(0, CANDLE_PLOT)]
-RSI70 = [70 for i in range(0, CANDLE_PLOT)]
-
 symbols_setting = pd.DataFrame(columns=CSV_COLUMNS)
 
 history_file_csv = 'orders_history.csv'
@@ -233,9 +229,7 @@ def detect_sideway_trend(df, atr_multiple=1.5, n=15, mode='2'):
 def cal_callback_rate(symbol, closePrice, targetPrice):
     rate = round(abs(closePrice - targetPrice) / closePrice * 100.0, 1)
     logger.debug(f'{symbol} closePrice:{closePrice}, targetPrice:{targetPrice}, callback_rate:{rate}')
-    if rate > 5.0:
-        return 5.0
-    elif rate < 0.1:
+    if rate < 0.1:
         return 0.1
     else:
         return rate
@@ -361,6 +355,11 @@ def line_chart_ema(symbol, df, msg, pd='', fibo_data=None, **kwargs):
         print(f"{symbol} create line_chart")
         data = df.tail(CANDLE_PLOT)
 
+        data_len = data.shape[0]
+        RSI30 = [30 for i in range(0, data_len)]
+        RSI50 = [50 for i in range(0, data_len)]
+        RSI70 = [70 for i in range(0, data_len)]
+
         showFibo = fibo_data != None and 'exit' not in pd.lower()
 
         colors = ['green' if value >= 0 else 'red' for value in data['MACDh']]
@@ -480,11 +479,12 @@ def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
 
         showFibo = fibo_data != None and 'exit' not in pd.lower()
 
-        ADXLine = [kwargs['ADXIn'] for i in range(0, CANDLE_PLOT)]
-        RSIlo = [kwargs['RSIlo'] for i in range(0, CANDLE_PLOT)]
-        RSIhi = [kwargs['RSIhi'] for i in range(0, CANDLE_PLOT)]
-        STOlo = [kwargs['STOlo'] for i in range(0, CANDLE_PLOT)]
-        STOhi = [kwargs['STOhi'] for i in range(0, CANDLE_PLOT)]
+        data_len = data.shape[0]
+        ADXLine = [kwargs['ADXIn'] for i in range(0, data_len)]
+        RSIlo = [kwargs['RSIlo'] for i in range(0, data_len)]
+        RSIhi = [kwargs['RSIhi'] for i in range(0, data_len)]
+        STOlo = [kwargs['STOlo'] for i in range(0, data_len)]
+        STOhi = [kwargs['STOhi'] for i in range(0, data_len)]
 
         # colors = ['green' if value >= 0 else 'red' for value in data['MACD']]
         added_plots = [
@@ -818,11 +818,11 @@ def open_order_history(symbol, positionSide:str, isTradeCount=True):
         or orders_history[symbol]['positions'][positionSide]['status'] != 'open':
         position = {}
         position['infos'] = {}
+        position['status'] = 'open'
         orders_history[symbol]['positions'] = {}
         orders_history[symbol]['orders'] = {}
         orders_history[symbol]['orders_open'] = {}
         orders_history[symbol]['positions'][positionSide] = position
-        orders_history[symbol]['positions'][positionSide]['status'] = 'open'
     if isTradeCount:
         orders_history[symbol]['trade'] = orders_history[symbol]['trade'] + 1
 def close_order_history(symbol, positionSide:str):
@@ -1385,33 +1385,33 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
                         await spot_TPSL(exchange, symbol, amount, priceEntry, priceTP, priceSL, closeRate, refClientOrderId)
                         print(f'[{symbol}] Set TP {priceTP} SL {priceSL}')
                         
-                    if trailingStopMode == 'on' and closeRate < 100.0:
-                        notify_msg.append('# TrailingStop')
-                        if priceTL == 0.0:
-                            # RR = 1
-                            activationPrice = price_to_precision(symbol, priceEntry + abs(priceEntry - priceSL))
-                        else:
-                            activationPrice = priceTL
+                    # if trailingStopMode == 'on' and closeRate < 100.0:
+                    #     notify_msg.append('# TrailingStop')
+                    #     if priceTL == 0.0:
+                    #         # RR = 1
+                    #         activationPrice = price_to_precision(symbol, priceEntry + abs(priceEntry - priceSL))
+                    #     else:
+                    #         activationPrice = priceTL
 
-                        if cfg_callback == 0.0:
-                            cfg_callback = fibo_data['callback_rate']
-                            notify_msg.append(f'Call Back: (AUTO) {cfg_callback:.2f}%')
-                        else:
-                            notify_msg.append(f'Call Back: {cfg_callback:.2f}%')
+                    #     if cfg_callback == 0.0:
+                    #         cfg_callback = fibo_data['callback_rate']
+                    #         notify_msg.append(f'Call Back: (AUTO) {cfg_callback:.2f}%')
+                    #     else:
+                    #         notify_msg.append(f'Call Back: {cfg_callback:.2f}%')
 
-                        activatePrice = await spot_TLSTOP(exchange, symbol, amount, activationPrice, cfg_callback, refClientOrderId)
-                        print(f'[{symbol}] Set Trailing Stop {activationPrice:.4f}')
-                        # callbackLong_str = ','.join(['{:.2f}%'.format(cb) for cb in callbackLong])
+                    #     activatePrice = await spot_TLSTOP(exchange, symbol, amount, activationPrice, cfg_callback, refClientOrderId)
+                    #     print(f'[{symbol}] Set Trailing Stop {activationPrice:.4f}')
+                    #     # callbackLong_str = ','.join(['{:.2f}%'.format(cb) for cb in callbackLong])
 
-                        if priceTL == 0.0:
-                            notify_msg.append(f'Active Price: (AUTO) @{activatePrice}')
-                        elif config.tp_pnl > 0:
-                            if config.is_percent_mode:
-                                notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}% @{activatePrice}')
-                            else:
-                                notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}$ @{activatePrice}')
-                        elif cfg_active_tl > 0:
-                            notify_msg.append(f'Active Price: {cfg_active_tl:.2f}% @{activatePrice}')
+                    #     if priceTL == 0.0:
+                    #         notify_msg.append(f'Active Price: (AUTO) @{activatePrice}')
+                    #     elif config.tp_pnl > 0:
+                    #         if config.is_percent_mode:
+                    #             notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}% @{activatePrice}')
+                    #         else:
+                    #             notify_msg.append(f'Active Price PNL: {config.active_tl_pnl:.2f}$ @{activatePrice}')
+                    #     elif cfg_active_tl > 0:
+                    #         notify_msg.append(f'Active Price: {cfg_active_tl:.2f}% @{activatePrice}')
 
                     gather( line_chart(symbol, df, '\n'.join(notify_msg), config.strategy_mode, fibo_data, **kwargs) )
                 
@@ -1515,7 +1515,7 @@ async def fetch_next_ohlcv(next_ticker):
             await exchange.close()
 
 async def mm_strategy():
-    global all_positions, is_send_notify_risk
+    global all_positions, is_send_notify_risk, orders_history
     try:
         print('MM processing...')
         exchange = await getExchange()
@@ -1784,6 +1784,96 @@ async def mm_strategy():
         if exchange:
             await exchange.close()
 
+async def update_tailing_stop():
+    global orders_history
+    try:
+        print('TL Stop updating...')
+        exchange = await getExchange()
+
+        balance = await exchange.fetch_balance()
+        # print(balance)
+
+        marginType = config.margin_type[0]
+
+        ex_balances = balance['balances']
+        tl_positions = [b for b in ex_balances if float(b['total']) != 0 
+                    and b['asset'] != marginType
+                    and f"{marginType}_{b['asset']}" in watch_list]
+        
+        tl_notify = []
+        min_tl_rate = config.min_tl_rate / 100.0
+        for position in tl_positions:
+            symbol = f"{marginType}_{position['asset']}"
+            highPrice = all_candles[symbol]['high'][-1] if symbol in all_candles.keys() else 0.0
+            closePrice = all_candles[symbol]['close'][-1] if symbol in all_candles.keys() else 0.0
+            if highPrice <= 0.0 or closePrice <= 0.0:
+                continue # skip if candle is not ready
+            position_infos = orders_history[symbol]['positions']['spot']['infos']
+            for coid in position_infos.keys():
+                if 'sl_price' in position_infos[coid].keys():
+                    # calculate new SL form last candle high price
+                    if position_infos[coid]['sl_price'] <= highPrice:
+                        last_price = position_infos[coid]['last_price']
+                        sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
+                        if sl_percent < min_tl_rate:
+                            sl_percent = min_tl_rate
+                        new_sl = highPrice * (1.0 - sl_percent)
+                        if position_infos[coid]['sl_price'] < new_sl:
+                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {highPrice:.6f}, {sl_percent:.4f}%, new SL:{new_sl:.8f}")
+                            position_infos[coid]['last_price'] = highPrice
+                            position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                        # else:
+                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
+                        logger.debug(f"[{symbol}] SL {position_infos[coid]['sl_price']}, High {highPrice:.6f}, SL {sl_percent:.4f}%, new SL:{new_sl:.8f}")
+                    elif position_infos[coid]['sl_price'] <= closePrice:
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {closePrice:.6f} (close)")
+                        positionAmt = position_infos[coid]['amount']
+                        await spot_close(exchange, symbol, positionAmt)
+                        tl_notify.append(f'{symbol} : SL Exit')
+                        # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
+                        logger.debug(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {closePrice:.6f} (close)")
+                else:
+                    cfg_sl = config.sl
+                    if symbol in symbols_setting.index:
+                        cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+                    priceEntry = position_infos[coid]['price']
+                    costAmount = position_infos[coid]['cost']
+                    amount = position_infos[coid]['amount']
+                    if config.sl_pnl > 0:
+                        if config.is_percent_mode:
+                            new_sl = price_to_precision(symbol, priceEntry - (costAmount * (config.sl_pnl / 100.0) / amount))
+                        else:
+                            new_sl = price_to_precision(symbol, priceEntry - (config.sl_pnl / amount))
+                    elif cfg_sl > 0:
+                        new_sl = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_sl / 100.0)))
+                    else:
+                        if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
+                            df = all_candles[symbol]
+                            lastPrice = df.iloc[-1]["close"]
+                            fibo_data = cal_minmax_fibo(symbol, df, lastPrice)
+                            new_sl = fibo_data['sl']
+                        else:
+                            new_sl = price_to_precision(symbol, highPrice * (1.0 - min_tl_rate))
+                    print(f"[{symbol}] New SL:{new_sl:.8f}")
+                    position_infos[coid]['last_price'] = highPrice
+                    position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                    logger.debug(f'[{symbol}] New SL:{new_sl:.8f}')
+
+        if len(tl_notify) > 0:
+            txt_notify = '\n'.join(tl_notify)
+            line_notify(f'\nสถานะ...\n{txt_notify}')
+
+    except Exception as ex:
+        print(type(ex).__name__, str(ex))
+        logger.exception('update_tailing_stop')
+        line_notify_err(f'แจ้งปัญหาระบบ tl\nข้อผิดพลาด: {str(ex)}')
+
+    finally:
+        if exchange:
+            await exchange.close()
+
+    return
+
 async def update_all_balance(notifyLine=False, updateOrder=False):
     global all_positions, balance_entry, balance_total, count_trade, orders_history
     try:
@@ -1988,6 +2078,8 @@ async def main():
     print(f'total time : {t2:0.2f} secs')
     logger.info(f'first ohlcv: {t2:0.2f} secs')
 
+    await update_tailing_stop()
+
     try:
         start_ticker = time.time()
         next_ticker = start_ticker - (start_ticker % time_wait) # ตั้งรอบเวลา
@@ -2016,6 +2108,8 @@ async def main():
                 print(f'total time : {t2:0.2f} secs')
                 logger.info(f'update ohlcv: {t2:0.2f} secs (include trade)')
 
+                await update_tailing_stop()
+
                 next_ticker += time_wait # กำหนดรอบเวลาถัดไป
                 next_ticker_ub += time_wait_ub
                 next_ticker_mm += time_wait_mm
@@ -2027,10 +2121,12 @@ async def main():
 
             else:
                 # # mm strategy
-                if config.trade_mode == 'on' and seconds >= next_ticker_mm:
-                    await mm_strategy()
-                    next_ticker_mm += time_wait_mm
-                    line_notify_last_err()
+                # if config.trade_mode == 'on' and seconds >= next_ticker_mm:
+                #     # await mm_strategy()
+                #     # await update_tailing_stop()
+                #     next_ticker_mm += time_wait_mm
+                #     line_notify_last_err()
+                
                 # display position
                 if config.trade_mode == 'on' and seconds >= next_ticker_ub + TIME_SHIFT:
                     # set cursor At top, left (1,1)
