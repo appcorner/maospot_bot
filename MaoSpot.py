@@ -325,6 +325,10 @@ def cal_minmax_fibo(symbol, df, closePrice=0.0):
     sl_sw = min(swing_lows[-config.SWING_TEST:])
     sl = min(sl_fibo, sl_sw)
 
+    # fixed tp by sl ratio 1:2
+    if tp == 0.0:
+        tp = price_to_precision(symbol, closePrice + (closePrice - sl) * 2.0)
+
     if config.CB_AUTO_MODE == 1:
         callback_rate = cal_callback_rate(symbol, closePrice, tp)
     else:
@@ -1099,8 +1103,7 @@ def maomao(df, signalIdx):
             return (False,True)
     return (False,False)
 
-def cal_tpsl(symbol, amount, priceEntry, fibo_data):
-    costAmount = config.cost_amount
+def cal_tpsl(symbol, amount, priceEntry, costAmount):
     cfg_tp = config.tp
     cfg_tp_close_rate = config.tp_close_rate
     cfg_sl = config.sl
@@ -1112,6 +1115,16 @@ def cal_tpsl(symbol, amount, priceEntry, fibo_data):
         cfg_sl = float(symbols_setting.loc[symbol]['sl'])
         cfg_callback = float(symbols_setting.loc[symbol]['callback'])
         cfg_active_tl = float(symbols_setting.loc[symbol]['active_tl'])
+
+    # คำนวน fibo
+    if config.tp_pnl == 0 or config.sl_pnl == 0 or cfg_tp == 0 or cfg_sl == 0:
+        if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
+            df = all_candles[symbol]
+            lastPrice = df.iloc[-1]["close"]
+            fibo_data = cal_minmax_fibo(symbol, df, lastPrice)
+        else:
+            return None
+
     if config.tp_pnl > 0:
         closeRate = config.tp_pnl_close_rate
         if config.is_percent_mode:
@@ -1544,36 +1557,28 @@ async def mm_strategy():
             position_infos = orders_history[symbol]['positions']['spot']['infos']
             for coid in position_infos.keys():
                 if 'sl_price' in position_infos[coid].keys():
-                    if position_infos[coid]['sl_price'] <= marketPrice:
-                        last_price = position_infos[coid]['last_price']
-                        sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
-                        if sl_percent < min_tl_rate:
-                            sl_percent = min_tl_rate
-                        new_sl = marketPrice * (1.0 - sl_percent)
-                        if position_infos[coid]['sl_price'] < new_sl:
-                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%, new SL:{new_sl:.8f}")
-                            position_infos[coid]['last_price'] = marketPrice
-                            position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
-                        # else:
-                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
-                    else:
-                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f}")
+                    if config.tpsl_mode == 'on' and position_infos[coid]['sl_price'] <= marketPrice:
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f} (last)")
                         positionAmt = position_infos[coid]['amount']
-                        exit_loops.append(spot_close(exchange, symbol, positionAmt))
-                        mm_notify.append(f'{symbol} : MM SL Exit')
+                        await spot_close(exchange, symbol, positionAmt)
+                        mm_notify.append(f'{symbol} : SL Exit')
                         # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
-                else:
-                    new_sl = marketPrice * (1.0 - min_tl_rate)
-                    print(f"[{symbol}] SL new SL:{new_sl:.8f}")
-                    position_infos[coid]['last_price'] = marketPrice
-                    position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                        logger.debug(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {marketPrice:.6f} (last)")
+                    if config.tpsl_mode == 'on' and position_infos[coid]['tl_price'] >= marketPrice:
+                        print(f"[{symbol}] TP Exit {position_infos[coid]['tl_price']} > {marketPrice:.6f} (last)")
+                        positionAmt = position_infos[coid]['amount']
+                        await spot_close(exchange, symbol, positionAmt)
+                        mm_notify.append(f'{symbol} : TP Exit')
+                        # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
+                        logger.debug(f"[{symbol}] TP Exit {position_infos[coid]['tl_price']} > {marketPrice:.6f} (last)")
+                    
         try:
             if len(exit_loops) > 0:
                 await gather(*exit_loops)
                 hasMMPositions = True
         except Exception as ex:
             print(type(ex).__name__, str(ex))
-            logger.exception('mm_strategy sl exit')
+            logger.exception('mm_strategy tpsl exit')
 
         if len(mm_notify) > 0:
             txt_notify = '\n'.join(mm_notify)
@@ -1825,7 +1830,7 @@ async def update_tailing_stop():
                         # else:
                         #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
                         logger.debug(f"[{symbol}] SL {position_infos[coid]['sl_price']}, High {highPrice:.6f}, SL {sl_percent:.4f}%, new SL:{new_sl:.8f}")
-                    elif position_infos[coid]['sl_price'] <= closePrice:
+                    elif config.tpsl_mode == 'on' and position_infos[coid]['sl_price'] <= closePrice:
                         print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {closePrice:.6f} (close)")
                         positionAmt = position_infos[coid]['amount']
                         await spot_close(exchange, symbol, positionAmt)

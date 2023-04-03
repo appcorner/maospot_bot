@@ -11,15 +11,15 @@ notify_api_error = on
 [app_config]
 ;# สามารถข้ามส่วนนี้ไปได้ โดยใช้ค่าที่กำหนดให้ได้เลย
 TIME_SHIFT = 5
-CANDLE_LIMIT = 200
-;CANDLE_PLOT = 100
+CANDLE_LIMIT = 50
+CANDLE_PLOT = 50
 ;# level การบันทึก log file ทั่วไปให้ใช้แบบ INFO
 ;# CRITICAL 50, ERROR 40, WARNING 30, INFO 20, DEBUG 10, NOTSET 0
 LOG_LEVEL = 10
 ;# กำหนดรอบเวลาในแสดง update balancec และ mm check
 ;# 0=timeframe, 1=15, 2=20, 3=30, 4=60, 5=timeframe/2 
 UB_TIMER_MODE = 4
-MM_TIMER_MIN = 0.5
+MM_TIMER_MIN = 1.0
 ;SWING_TF = 5
 ;SWING_TEST = 2
 ;TP_FIBO = 2
@@ -27,7 +27,7 @@ MM_TIMER_MIN = 0.5
 START_TRADE_TF = 1h
 
 [setting]
-timeframe = 1h
+timeframe = 30m
 signal_index = -2
 margin_type = THB
 
@@ -51,7 +51,6 @@ tp_close_rate = 50.0
 
 trailing_stop_mode = off
 callback = 2.5
-active_tl = 10.0
 
 ;# เลือกกำหนดค่า strategy เป็น ema, adxrsi, maomao
 strategy_mode = adxrsi

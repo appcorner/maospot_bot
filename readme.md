@@ -6,6 +6,11 @@
 - adxrsi ใช้ adx และ rsi และ/หรือ sto
 - maomao ใช้เส้น ema และ macd
 
+## TP SL TL (อยู่ระหว่างการทดสอบ)
+- TP ยังไม่ได้ใช้งาน
+- SL กำหนดจาก config เป็น % หรือ PNL หรือ auto fibo
+- trailing stop ตั้งแต่เริ่ม โดยกำหนดค่า callback เป็น % หรือ คำนวน auto จากค่า SL,TP
+
 ## config.ini (rename จาก config.ini.sample)
 
     [bitkub]
@@ -80,14 +85,12 @@
     ; กำหนดจำนวน balance ขั้นต่ำ จะไม่เปิด order ใหม่ ถ้า balance เหลือต่ำกว่า not_trade
     not_trade = 50
 
-    ; ห้ามเปิดใช้ เพราะยังไม่ทำงาน
-    tpsl_mode = off
+    tpsl_mode = on
     ;tp = 10.0
     ;sl = 4.0
     ;tp_close_rate = 50.0
 
-    ; ห้ามเปิดใช้ เพราะยังไม่ทำงาน
-    trailing_stop_mode = off
+    trailing_stop_mode = on
     ;callback = 5.0
     ;active_tl = 10.0
 
