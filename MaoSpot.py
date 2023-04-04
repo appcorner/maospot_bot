@@ -831,24 +831,25 @@ def open_order_history(symbol, positionSide:str, isTradeCount=True):
         orders_history[symbol]['trade'] = orders_history[symbol]['trade'] + 1
 def close_order_history(symbol, positionSide:str):
     global orders_history
-    if symbol in orders_history.keys():
+    if symbol not in orders_history.keys():
         new_order_history(symbol)
     if positionSide in orders_history[symbol]['positions'].keys():
         orders_history[symbol]['positions'][positionSide]['status'] = 'close'
-    positions = all_positions[all_positions['symbol'] == symbol]
+    positions =  all_positions.loc[all_positions['symbol'] == symbol]
     if len(positions) == 0:
         return
-    positionInfo = positions.iloc[0]
+    positionInfo = positions.iloc[-1]
     logger.debug(f'{symbol} close_order_history\n{positionInfo}')
     profit = 0
-    if len(positions) > 0 and float(positionInfo["unrealizedPrice"]) != 0:
-        profit = float(positionInfo["unrealizedPrice"])
+    if len(positions) > 0 and float(positionInfo["unrealizedProfit"]) != 0:
+        profit = float(positionInfo["unrealizedProfit"])
     if profit > 0:
         orders_history[symbol]['win'] = orders_history[symbol]['win'] + 1
         orders_history[symbol]['last_loss'] = 0
     elif profit < 0:
         orders_history[symbol]['loss'] = orders_history[symbol]['loss'] + 1
         orders_history[symbol]['last_loss'] = orders_history[symbol]['last_loss'] + 1
+    logger.debug(f'{symbol} win:{orders_history[symbol]["win"]} loss:{orders_history[symbol]["loss"]} trade:{orders_history[symbol]["trade"]} last_loss:{orders_history[symbol]["last_loss"]}')
 def update_order_history(symbol, orderType:str, order, params={}):
     global orders_history
     if symbol not in orders_history.keys():
@@ -1813,6 +1814,7 @@ async def update_tailing_stop():
             closePrice = all_candles[symbol]['close'][-1] if symbol in all_candles.keys() else 0.0
             if highPrice <= 0.0 or closePrice <= 0.0:
                 continue # skip if candle is not ready
+            logger.debug(f"[{symbol}] TL high:{highPrice:.6f}, close:{closePrice:.6f}")
             position_infos = orders_history[symbol]['positions']['spot']['infos']
             for coid in position_infos.keys():
                 if 'sl_price' in position_infos[coid].keys():
@@ -1944,7 +1946,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
             print(f"Count Trade : {count_trade}/{config.limit_trade}")
 
         margin_balances = [b for b in ex_balances if b['asset'] == marginType]
-        balance_entry[marginType] = float(margin_balances[0]['total'])
+        balance_entry[marginType] = float(margin_balances[0]['free'])
 
         sumUnrealizedPrice =  all_positions['unrealizedPrice'].astype('float64').sum()
         sumUnrealizedProfit =  all_positions['unrealizedProfit'].astype('float64').sum()
