@@ -1815,10 +1815,12 @@ async def update_tailing_stop():
             if highPrice <= 0.0 or closePrice <= 0.0:
                 continue # skip if candle is not ready
             logger.debug(f"[{symbol}] TL high:{highPrice:.6f}, close:{closePrice:.6f}")
-            position_infos = orders_history[symbol]['positions']['spot']['infos']
-            if orders_history[symbol]['positions']['spot']['status'] == 'close':
+            if 'spot' not in  orders_history[symbol]['positions'].keys() \
+                or 'infos' not in orders_history[symbol]['positions']['spot'].keys() \
+                or orders_history[symbol]['positions']['spot']['status'] == 'close':
                 # skip if position is closed
                 continue
+            position_infos = orders_history[symbol]['positions']['spot']['infos']
             for coid in position_infos.keys():
                 if 'sl_price' in position_infos[coid].keys():
                     # calculate new SL form last candle high price
