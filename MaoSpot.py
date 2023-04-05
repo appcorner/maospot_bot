@@ -1816,6 +1816,9 @@ async def update_tailing_stop():
                 continue # skip if candle is not ready
             logger.debug(f"[{symbol}] TL high:{highPrice:.6f}, close:{closePrice:.6f}")
             position_infos = orders_history[symbol]['positions']['spot']['infos']
+            if orders_history[symbol]['positions']['spot']['status'] == 'close':
+                # skip if position is closed
+                continue
             for coid in position_infos.keys():
                 if 'sl_price' in position_infos[coid].keys():
                     # calculate new SL form last candle high price
@@ -1843,6 +1846,7 @@ async def update_tailing_stop():
                     cfg_sl = config.sl
                     if symbol in symbols_setting.index:
                         cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+                    print(position_infos[coid])
                     priceEntry = position_infos[coid]['price']
                     costAmount = position_infos[coid]['cost']
                     amount = position_infos[coid]['amount']
@@ -1923,6 +1927,8 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         else:
             def f(symbol):
                 if 'spot' in orders_history[symbol]['positions'].keys():
+                    if orders_history[symbol]['positions']['spot']['status'] == 'close':
+                        return 0.0
                     infos = orders_history[symbol]['positions']['spot']['infos']
                     if len(infos.keys()) == 0:
                         return 0.0
