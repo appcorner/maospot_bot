@@ -145,6 +145,25 @@ async def getExchange():
     
     return exchange
 
+async def retry(func, limit=0, wait_s=3, wait_increase_ratio=2):
+    attempt = 1
+    while True:
+        try:
+            return await func()
+        except Exception as ex:
+            if 'RequestTimeout' not in type(ex).__name__:
+                raise ex
+            if 0 < limit <= attempt:
+                logger.warning("no more attempts")
+                raise ex
+
+            logger.error("failed execution attempt #%d", attempt)
+
+            attempt += 1
+            logger.info("waiting %d s before attempt #%d", wait_s, attempt)
+            time.sleep(wait_s)
+            wait_s *= wait_increase_ratio
+
 def school_round(a_in,n_in):
     ''' python uses "banking round; while this round 0.05 up '''
     if (a_in * 10 ** (n_in + 1)) % 10 == 5:
@@ -773,15 +792,22 @@ async def fetch_ohlcv(exchange, symbol, timeframe, limit=1, timestamp=0):
     global all_candles
     ccxt_symbol = exchange_symbol(symbol)
     try:
+        # # delay เพื่อให้กระจาย symbol ลด timeout
+        # await sleep(randint(1,20))
         # กำหนดการอ่านแท่งเทียนแบบไม่ระบุจำนวน
         if limit == 0 and symbol in all_candles.keys():
             timeframe_secs = TIMEFRAME_SECONDS[timeframe]
             last_candle_time = int(pd.Timestamp(all_candles[symbol].index[-1]).tz_convert('UTC').timestamp())
             # ให้อ่านแท่งสำรองเพิ่มอีก 2 แท่ง
-            limit = round(1.5+(timestamp-last_candle_time)/timeframe_secs)
-            ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
-        else:
-            ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
+            limit = round(0.5+(timestamp-last_candle_time)/timeframe_secs)
+        #     ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
+        # else:
+        #     ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
+        async def fetch_ohlcv():
+            return await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
+
+        ohlcv_bars = await retry(fetch_ohlcv, limit=3)
+        
         if len(ohlcv_bars):
             all_candles[symbol] = add_indicator(symbol, ohlcv_bars)
             # print(symbol, 'candles:', len(all_candles[symbol]))
@@ -898,7 +924,11 @@ async def update_open_orders(exchange, symbol):
         total_cost = 0.0
         if symbol not in orders_history.keys():
             new_order_history(symbol)
-        my_trades = await exchange.fetch_my_trades(symbol)
+        # # delay เพื่อให้กระจาย symbol ลด timeout
+        # await sleep(randint(1,20))
+        async def fetch_my_trades():
+            return await exchange.fetch_my_trades(symbol)
+        my_trades = await retry(fetch_my_trades, limit=3)
         columns = ['id', 'timestamp', 'datetime', 'symbol', 'order', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'positionSide', 'clientOrderId']
         # display_columns = ['datetime', 'symbol', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'clientOrderId']
         open_orders = pd.DataFrame(my_trades, columns=columns)
@@ -917,6 +947,8 @@ async def update_open_orders(exchange, symbol):
                 or 'spot' not in orders_history[symbol]['positions'].keys() \
                 or order['clientOrderId'] not in orders_history[symbol]['positions']['spot']['infos'].keys() ):
                 update_order_history(symbol, 'open', order, params={})
+            elif order['clientOrderId'] in orders_history[symbol]['positions']['spot']['infos'].keys():
+                orders_history[symbol]['positions']['spot']['status'] = 'open'
             # else:
             #     print(f'{symbol} is in orders')
             total_cost += order['cost']
@@ -1176,14 +1208,14 @@ async def go_trade(exchange, symbol, chkLastPrice=True):
     global all_positions, balance_entry, count_trade
 
     # delay เพื่อให้กระจายการ trade ของ symbol มากขึ้น
-    delay = randint(5,10)
+    delay = randint(5,9)
     # จัดลำดับการ trade symbol
     if symbol in orders_history.keys():
         winRate = orders_history[symbol]['win']/orders_history[symbol]['trade']
         if winRate > 0.5:
-            delay = 0
+            delay = randint(1,2)
         elif winRate == 0.5:
-             delay = 4
+             delay = randint(3,4)
     await sleep(delay)
 
     # อ่านข้อมูลแท่งเทียนที่เก็บไว้ใน all_candles
@@ -1446,7 +1478,8 @@ async def load_all_symbols():
         exchange = await getExchange()
 
         # t1=time.time()
-        markets = await exchange.fetch_markets()
+        markets = await retry(exchange.fetch_markets, limit=3)
+
         # print(markets)
         mdf = pd.DataFrame(markets, columns=['id','quote','symbol'])
         mdf.drop(mdf[~mdf.quote.isin(config.margin_type)].index, inplace=True)
@@ -1534,10 +1567,8 @@ async def mm_strategy():
         print('MM processing...')
         exchange = await getExchange()
 
-        tickets = await exchange.fetch_tickers()
-        # print(tickets)
-        balance = await exchange.fetch_balance()
-        # print(balance)
+        tickets = await retry(exchange.fetch_tickers, limit=3)
+        balance = await retry(exchange.fetch_balance, limit=3)
 
         marginType = config.margin_type[0]
 
@@ -1796,8 +1827,7 @@ async def update_tailing_stop():
         print('TL Stop updating...')
         exchange = await getExchange()
 
-        balance = await exchange.fetch_balance()
-        # print(balance)
+        balance = await retry(exchange.fetch_balance, limit=3)
 
         marginType = config.margin_type[0]
 
@@ -1892,12 +1922,9 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
     try:
         exchange = await getExchange()
 
-        tickets = await exchange.fetch_tickers()
-        # print(tickets)
-
-        balance = await exchange.fetch_balance()
-        # print(balance)
-
+        tickets = await retry(exchange.fetch_tickers, limit=3)
+        balance = await retry(exchange.fetch_balance, limit=3)
+            
         marginType = config.margin_type[0]
 
         ex_balances = balance['balances']
@@ -1921,6 +1948,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         # update open order
         if updateOrder:
             open_symbols = all_positions['symbol'].to_list()
+            logger.debug(f'open_symbols: {open_symbols}')
             loops = [async_close_order_history(symbol, 'spot') for symbol in orders_history.keys() if symbol not in open_symbols]
             await gather(*loops)
 
