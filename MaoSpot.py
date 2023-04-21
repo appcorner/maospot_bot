@@ -73,7 +73,9 @@ UB_TIMER_SECONDS = [
 BALANCE_COLUMNS = ["asset", "free", "locked", "total"]
 # BALANCE_COLUMNS_RENAME = ["Asset", "Free", "Locked", "Total", "Symbol", "Market Price", "Unrealized Price"]
 # BALANCE_COLUMNS_DISPLAY = ["Symbol", "Free", "Locked", "Total", "Symbol", "Market Price", "Unrealized Price"]
-BALANCE_COLUMNS_DISPLAY = ["asset", "free", "locked", "total", "marketPrice", "Margin", "unrealizedProfit"]
+# BALANCE_COLUMNS_DISPLAY = ["asset", "free", "locked", "total", "marketPrice", "Margin", "unrealizedProfit"]
+BALANCE_COLUMNS_RENAME = ["Asset", "Total", "Market Price", "Margin", "Unrealized PNL"]
+BALANCE_COLUMNS_DISPLAY = ["asset", "total", "marketPrice", "Margin", "unrealizedProfit"]
 
 CSV_COLUMNS = [
         "symbol", "signal_index", "margin_type",
@@ -128,14 +130,6 @@ history_file_csv = 'orders_history.csv'
 history_json_path = 'orders_history.json'
 
 async def getExchange():
-    # exchange = ccxt.binance({
-    #     "apiKey": config.API_KEY,
-    #     "secret": config.API_SECRET,
-    #     "options": {"defaultType": "future"},
-    #     "enableRateLimit": True
-    #     })
-    # if config.SANDBOX:
-    #     exchange.set_sandbox_mode(True)
     exchange = ccxt_bk.bitkub({
         "apiKey": config.API_KEY,
         "secret": config.API_SECRET,
@@ -999,9 +993,11 @@ async def spot_enter(exchange, symbol, amount, tf=config.timeframe):
     params={
         "client_id": genClientOrderId(symbol, tf),
     }
-    ticker = await exchange.fetch_ticker(symbol)
-    ask = float(ticker['ask'])
-    order = await exchange.create_order(symbol, 'limit', 'buy', amount, price=ask, params=params)
+    async def create_order():
+        ticker = await exchange.fetch_ticker(symbol)
+        ask = float(ticker['ask'])
+        return (ask, await exchange.create_order(symbol, 'limit', 'buy', amount, price=ask, params=params))
+    (ask, order) = await retry(create_order, limit=5)
     # print("Status : LONG ENTERING PROCESSING...")
     logger.debug(f'{symbol} spot_enter {str(order)}')
     open_order_history(symbol, 'spot')
@@ -1013,9 +1009,11 @@ async def spot_close(exchange, symbol, positionAmt, tf=config.timeframe, refCOID
     params={
         "client_id": genClientOrderId(symbol, 'cl', refCOID),
     }
-    ticker = await exchange.fetch_ticker(symbol)
-    bid = float(ticker['bid'])
-    order = await exchange.create_order(symbol, 'limit', 'sell', positionAmt, price=bid, params=params)
+    async def create_order():
+        ticker = await exchange.fetch_ticker(symbol)
+        bid = float(ticker['bid'])
+        return await exchange.create_order(symbol, 'limit', 'sell', positionAmt, price=bid, params=params)
+    order = await retry(create_order, limit=5)
     logger.debug(f'{symbol} spot_close {str(order)}')
     close_order_history(symbol, 'spot')
     update_order_history(symbol, 'close', order)
@@ -1087,7 +1085,9 @@ async def cal_amount(exchange, symbol, leverage, costType, costAmount, closePric
     # minCost = float(all_symbols[symbol]['minCost'])
     if chkLastPrice:
         try:
-            ticker = await exchange.fetch_ticker(symbol)
+            async def fetch_ticker():
+                return await exchange.fetch_ticker(symbol)
+            ticker = await retry(fetch_ticker, limit=3)
             logger.debug(f'{symbol}:ticker\n{ticker}')
             priceEntry = float(ticker['last'])
         except Exception as ex:
@@ -1412,7 +1412,7 @@ async def load_all_symbols():
         exchange = await getExchange()
 
         # t1=time.time()
-        markets = await retry(exchange.fetch_markets, limit=3)
+        markets = await retry(exchange.fetch_markets, limit=5)
 
         # print(markets)
         mdf = pd.DataFrame(markets, columns=['id','quote','symbol'])
@@ -1501,8 +1501,8 @@ async def mm_strategy():
         print('MM processing...')
         exchange = await getExchange()
 
-        tickets = await retry(exchange.fetch_tickers, limit=3)
-        balance = await retry(exchange.fetch_balance, limit=3)
+        tickets = await retry(exchange.fetch_tickers, limit=5)
+        balance = await retry(exchange.fetch_balance, limit=5)
 
         marginType = config.margin_type[0]
 
@@ -1761,7 +1761,7 @@ async def update_tailing_stop():
         print('TL Stop updating...')
         exchange = await getExchange()
 
-        balance = await retry(exchange.fetch_balance, limit=3)
+        balance = await retry(exchange.fetch_balance, limit=5)
 
         marginType = config.margin_type[0]
 
@@ -1810,12 +1810,18 @@ async def update_tailing_stop():
                         logger.debug(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {closePrice:.6f} (close)")
                 else:
                     cfg_sl = config.sl
+                    cfg_tp = config.tp
+                    cfg_callback = config.callback
                     if symbol in symbols_setting.index:
                         cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+                        cfg_tp = float(symbols_setting.loc[symbol]['tp'])
+                        cfg_callback = float(symbols_setting.loc[symbol]['callback'])
                     print(position_infos[coid])
                     priceEntry = position_infos[coid]['price']
                     costAmount = position_infos[coid]['cost']
                     amount = position_infos[coid]['amount']
+                    new_sl = 0.0
+                    new_tp = 0.0
                     if config.sl_pnl > 0:
                         if config.is_percent_mode:
                             new_sl = price_to_precision(symbol, priceEntry - (costAmount * (config.sl_pnl / 100.0) / amount))
@@ -1823,14 +1829,21 @@ async def update_tailing_stop():
                             new_sl = price_to_precision(symbol, priceEntry - (config.sl_pnl / amount))
                     elif cfg_sl > 0:
                         new_sl = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_sl / 100.0)))
-                    else:
+                    if config.tp_pnl > 0:
+                        if config.is_percent_mode:
+                            new_tp = price_to_precision(symbol, priceEntry - (costAmount * (config.tp_pnl / 100.0) / amount))
+                        else:
+                            new_tp = price_to_precision(symbol, priceEntry - (config.tp_pnl / amount))
+                    elif cfg_tp > 0:
+                        new_tp = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_tp / 100.0)))
+                    if new_sl == 0.0 or new_tp == 0.0:
                         if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
                             df = all_candles[symbol]
                             lastPrice = df.iloc[-1]["close"]
                             fibo_data = cal_minmax_fibo(symbol, df, lastPrice)
-                            new_sl = fibo_data['sl']
+                            new_sl = fibo_data['sl'] if new_sl == 0.0 else new_sl
                         else:
-                            new_sl = price_to_precision(symbol, highPrice * (1.0 - min_tl_rate))
+                            new_sl = price_to_precision(symbol, highPrice * (1.0 - min_tl_rate)) if new_sl == 0.0 else new_sl
                     print(f"[{symbol}] New SL:{new_sl:.8f}")
                     position_infos[coid]['last_price'] = highPrice
                     position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
@@ -1856,8 +1869,8 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
     try:
         exchange = await getExchange()
 
-        tickets = await retry(exchange.fetch_tickers, limit=3)
-        balance = await retry(exchange.fetch_balance, limit=3)
+        tickets = await retry(exchange.fetch_tickers, limit=5)
+        balance = await retry(exchange.fetch_balance, limit=5)
             
         marginType = config.margin_type[0]
 
@@ -1926,7 +1939,9 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         if len(all_positions) > 0:
             all_positions.sort_values(by=['unrealizedProfit'], ignore_index=True, ascending=False, inplace=True)
             all_positions.index = all_positions.index + 1
-            print(all_positions[BALANCE_COLUMNS_DISPLAY])
+            display_positions = all_positions[BALANCE_COLUMNS_DISPLAY]
+            display_positions.columns = BALANCE_COLUMNS_RENAME
+            print(display_positions)
         else:
             print('No Balances')
 
@@ -2094,7 +2109,7 @@ async def main():
                 is_send_notify_risk = False
                 line_notify_last_err()
 
-                await sleep(10)
+                # await sleep(10)
 
             else:
                 # # mm strategy
