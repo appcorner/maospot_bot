@@ -388,8 +388,8 @@ class bitkub(Exchange):
         trades = response['result']
         result = []
         for i in range(0, len(trades)):
-            id = self.safe_string(trades[i], 'txn_id')
-            order = self.safe_string(trades[i], 'order_id')
+            id = self.safe_string(trades[i], 'order_id')
+            order = self.safe_string(trades[i], 'txn_id')
             type = self.safe_string(trades[i], 'type')
             side = self.safe_string(trades[i], 'side')
             takerOrMaker = self.safe_value(trades[i], 'taken_by_me')
