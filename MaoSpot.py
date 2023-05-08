@@ -1787,10 +1787,13 @@ async def update_tailing_stop():
                 # skip if position is closed
                 continue
             position_infos = orders_history[symbol]['positions']['spot']['infos']
-            for coid in position_infos.keys():
+            positionSymbols = position_infos.keys()
+            for coid in positionSymbols:
+                if coid not in position_infos.keys():
+                    continue
                 if 'sl_price' in position_infos[coid].keys():
                     # calculate new SL form last candle high price
-                    if position_infos[coid]['sl_price'] <= highPrice:
+                    if position_infos[coid]['last_price'] <= highPrice:
                         last_price = position_infos[coid]['last_price']
                         sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
                         if sl_percent < min_tl_rate:
@@ -1803,8 +1806,8 @@ async def update_tailing_stop():
                         # else:
                         #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
                         logger.debug(f"[{symbol}] SL {position_infos[coid]['sl_price']}, High {highPrice:.6f}, SL {sl_percent:.4f}%, new SL:{new_sl:.8f}")
-                    elif config.tpsl_mode == 'on' and position_infos[coid]['sl_price'] <= closePrice:
-                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} > {closePrice:.6f} (close)")
+                    if config.tpsl_mode == 'on' and position_infos[coid]['sl_price'] >= closePrice:
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} >= {closePrice:.6f} (close)")
                         positionAmt = position_infos[coid]['amount']
                         await spot_close(exchange, symbol, positionAmt)
                         tl_notify.append(f'{symbol} : SL Exit')
@@ -1840,9 +1843,7 @@ async def update_tailing_stop():
                         new_tp = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_tp / 100.0)))
                     if new_sl == 0.0 or new_tp == 0.0:
                         if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
-                            df = all_candles[symbol]
-                            lastPrice = df.iloc[-1]["close"]
-                            fibo_data = cal_minmax_fibo(symbol, df, lastPrice)
+                            fibo_data = cal_minmax_fibo(symbol, all_candles[symbol], closePrice)
                             new_sl = fibo_data['sl'] if new_sl == 0.0 else new_sl
                         else:
                             new_sl = price_to_precision(symbol, highPrice * (1.0 - min_tl_rate)) if new_sl == 0.0 else new_sl
@@ -1865,6 +1866,119 @@ async def update_tailing_stop():
             await exchange.close()
 
     return
+
+async def update_tailing_stop_rt():
+    global orders_history
+    try:
+        print('TL Stop updating...')
+        exchange = await getExchange()
+
+        tickets = await retry(exchange.fetch_tickers, limit=5)
+        balance = await retry(exchange.fetch_balance, limit=5)
+
+        marginType = config.margin_type[0]
+
+        ex_balances = balance['balances']
+        tl_positions = [b for b in ex_balances if float(b['total']) != 0 
+                    and b['asset'] != marginType
+                    and f"{marginType}_{b['asset']}" in watch_list]
+        
+        tl_notify = []
+        min_tl_rate = config.min_tl_rate / 100.0
+        for position in tl_positions:
+            symbol = f"{marginType}_{position['asset']}"
+            lastPrice = tickets[symbol]['last'] if symbol in tickets.keys() else 0.0
+            highPrice = all_candles[symbol]['high'][-1] if symbol in all_candles.keys() else 0.0
+            closePrice = all_candles[symbol]['close'][-1] if symbol in all_candles.keys() else 0.0
+            if lastPrice <= 0.0:
+                continue # skip if candle is not ready
+            logger.debug(f"[{symbol}] TL RT last:{lastPrice:.6f}, high:{highPrice:.6f}, close:{closePrice:.6f}")
+            if 'spot' not in  orders_history[symbol]['positions'].keys() \
+                or 'infos' not in orders_history[symbol]['positions']['spot'].keys() \
+                or orders_history[symbol]['positions']['spot']['status'] == 'close':
+                # skip if position is closed
+                continue
+            position_infos = orders_history[symbol]['positions']['spot']['infos']
+            positionSymbols = position_infos.keys()
+            for coid in positionSymbols:
+                if coid not in position_infos.keys():
+                    continue
+                if 'sl_price' in position_infos[coid].keys():
+                    # calculate new SL form last price
+                    if position_infos[coid]['last_price'] <= lastPrice:
+                        last_price = position_infos[coid]['last_price']
+                        sl_percent = abs(last_price - position_infos[coid]['sl_price']) / last_price
+                        if sl_percent < min_tl_rate:
+                            sl_percent = min_tl_rate
+                        new_sl = lastPrice * (1.0 - sl_percent)
+                        if position_infos[coid]['sl_price'] < new_sl:
+                            print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {lastPrice:.6f}, {sl_percent:.4f}%, new SL:{new_sl:.8f}")
+                            position_infos[coid]['last_price'] = lastPrice
+                            position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                        # else:
+                        #     print(f"[{symbol}] SL {position_infos[coid]['sl_price']} <= {marketPrice:.6f}, {sl_percent:.4f}%")
+                        logger.debug(f"[{symbol}] SL {position_infos[coid]['sl_price']}, Last {lastPrice:.6f}, SL {sl_percent:.4f}%, new SL:{new_sl:.8f}")
+                    if config.tpsl_mode == 'on' and position_infos[coid]['sl_price'] >= lastPrice:
+                        print(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} >= {lastPrice:.6f} (close)")
+                        positionAmt = position_infos[coid]['amount']
+                        await spot_close(exchange, symbol, positionAmt)
+                        tl_notify.append(f'{symbol} : SL Exit')
+                        # cancel_loops.append(cancel_order(exchange, symbol, 'long'))
+                        logger.debug(f"[{symbol}] SL Exit {position_infos[coid]['sl_price']} >= {lastPrice:.6f} (close)")
+                else:
+                    cfg_sl = config.sl
+                    cfg_tp = config.tp
+                    cfg_callback = config.callback
+                    if symbol in symbols_setting.index:
+                        cfg_sl = float(symbols_setting.loc[symbol]['sl'])
+                        cfg_tp = float(symbols_setting.loc[symbol]['tp'])
+                        cfg_callback = float(symbols_setting.loc[symbol]['callback'])
+                    print(position_infos[coid])
+                    priceEntry = position_infos[coid]['price']
+                    costAmount = position_infos[coid]['cost']
+                    amount = position_infos[coid]['amount']
+                    new_sl = 0.0
+                    new_tp = 0.0
+                    if config.sl_pnl > 0:
+                        if config.is_percent_mode:
+                            new_sl = price_to_precision(symbol, priceEntry - (costAmount * (config.sl_pnl / 100.0) / amount))
+                        else:
+                            new_sl = price_to_precision(symbol, priceEntry - (config.sl_pnl / amount))
+                    elif cfg_sl > 0:
+                        new_sl = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_sl / 100.0)))
+                    if config.tp_pnl > 0:
+                        if config.is_percent_mode:
+                            new_tp = price_to_precision(symbol, priceEntry - (costAmount * (config.tp_pnl / 100.0) / amount))
+                        else:
+                            new_tp = price_to_precision(symbol, priceEntry - (config.tp_pnl / amount))
+                    elif cfg_tp > 0:
+                        new_tp = price_to_precision(symbol, priceEntry - (priceEntry * (cfg_tp / 100.0)))
+                    if new_sl == 0.0 or new_tp == 0.0:
+                        if symbol in all_candles.keys() and len(all_candles[symbol]) >= CANDLE_SAVE:
+                            fibo_data = cal_minmax_fibo(symbol, all_candles[symbol], closePrice)
+                            new_sl = fibo_data['sl'] if new_sl == 0.0 else new_sl
+                        else:
+                            new_sl = price_to_precision(symbol, lastPrice * (1.0 - min_tl_rate)) if new_sl == 0.0 else new_sl
+                    print(f"[{symbol}] New SL:{new_sl:.8f}")
+                    position_infos[coid]['last_price'] = lastPrice
+                    position_infos[coid]['sl_price'] = price_to_precision(symbol, new_sl)
+                    logger.debug(f'[{symbol}] New SL:{new_sl:.8f}')
+
+        if len(tl_notify) > 0:
+            txt_notify = '\n'.join(tl_notify)
+            line_notify(f'\nสถานะ...\n{txt_notify}')
+
+    except Exception as ex:
+        print(type(ex).__name__, str(ex))
+        logger.exception('update_tailing_stop')
+        line_notify_err(f'แจ้งปัญหาระบบ tl\nข้อผิดพลาด: {str(ex)}')
+
+    finally:
+        if exchange:
+            await exchange.close()
+
+    return
+
 
 async def update_all_balance(notifyLine=False, updateOrder=False):
     global all_positions, balance_entry, balance_total, count_trade, orders_history
@@ -2114,12 +2228,12 @@ async def main():
                 # await sleep(10)
 
             else:
-                # # mm strategy
-                # if config.trade_mode == 'on' and seconds >= next_ticker_mm:
-                #     # await mm_strategy()
-                #     # await update_tailing_stop()
-                #     next_ticker_mm += time_wait_mm
-                #     line_notify_last_err()
+                # mm strategy
+                if config.trade_mode == 'on' and seconds >= next_ticker_mm:
+                    # await mm_strategy()
+                    await update_tailing_stop_rt()
+                    next_ticker_mm += time_wait_mm
+                    line_notify_last_err()
                 
                 # display position
                 if config.trade_mode == 'on' and seconds >= next_ticker_ub + TIME_SHIFT:
