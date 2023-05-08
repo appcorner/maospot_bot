@@ -849,6 +849,7 @@ def open_order_history(symbol, positionSide:str, isTradeCount=True):
         orders_history[symbol]['positions'][positionSide] = position
     if isTradeCount:
         orders_history[symbol]['trade'] = orders_history[symbol]['trade'] + 1
+
 def close_order_history(symbol, positionSide:str):
     global orders_history
     if symbol not in orders_history.keys():
@@ -870,6 +871,9 @@ def close_order_history(symbol, positionSide:str):
         orders_history[symbol]['loss'] = orders_history[symbol]['loss'] + 1
         orders_history[symbol]['last_loss'] = orders_history[symbol]['last_loss'] + 1
     logger.debug(f'{symbol} win:{orders_history[symbol]["win"]} loss:{orders_history[symbol]["loss"]} trade:{orders_history[symbol]["trade"]} last_loss:{orders_history[symbol]["last_loss"]}')
+async def async_close_order_history(symbol, positionSide:str):
+    close_order_history(symbol, positionSide)
+
 def update_order_history(symbol, orderType:str, order, params={}):
     global orders_history
     if symbol not in orders_history.keys():
@@ -952,8 +956,6 @@ async def update_open_orders(exchange, symbol):
     except Exception as ex:
         print(type(ex).__name__, symbol, str(ex))
         logger.exception(f'update_open_orders {symbol}')
-async def async_close_order_history(symbol, positionSide:str):
-    close_order_history(symbol, positionSide)
 
 def save_orders_history_csv(filename):
     oh_json = [{
