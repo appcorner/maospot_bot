@@ -145,7 +145,8 @@ async def retry(func, limit=0, wait_s=3, wait_increase_ratio=2):
         try:
             return await func()
         except Exception as ex:
-            if 'RequestTimeout' not in type(ex).__name__:
+            if 'RequestTimeout' not in type(ex).__name__ \
+                and 'TimeoutError' not in type(ex).__name__:
                 raise ex
             if 0 < limit <= attempt:
                 logger.warning("no more attempts")
@@ -797,10 +798,10 @@ async def fetch_ohlcv(exchange, symbol, timeframe, limit=1, timestamp=0):
         #     ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
         # else:
         #     ohlcv_bars = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
-        async def fetch_ohlcv():
+        async def call_fetch_ohlcv():
             return await exchange.fetch_ohlcv(ccxt_symbol, timeframe, None, limit)
 
-        ohlcv_bars = await retry(fetch_ohlcv, limit=3)
+        ohlcv_bars = await retry(call_fetch_ohlcv, limit=3)
         
         if len(ohlcv_bars):
             all_candles[symbol] = add_indicator(symbol, ohlcv_bars)
