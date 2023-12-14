@@ -5,18 +5,20 @@
 # NOTE: this is modified version of bitkub from
 #       https://github.com/binares/ccxt-unmerged/tree/master/ccxt_unmerged
 
+
 from ccxt.async_support.base.exchange import Exchange
+from ccxt_bk.abstract.bitkub import ImplicitAPI
 import json
+import requests
 
-
-class bitkub(Exchange):
+class bitkub(Exchange, ImplicitAPI):
 
     def describe(self):
         return self.deep_extend(super(bitkub, self).describe(), {
             'id': 'bitkub',
             'name': 'bitkub',
             'countries': ['TH'],
-            'version': 'v1',
+            'version': 'v2',
             'has': {
                 'CORS': False,
                 'spot': True,
@@ -56,43 +58,45 @@ class bitkub(Exchange):
             },
             'api': {
                 'public': {
-                    'get': [
-                        'api/status',
-                        'api/servertime',
-                        'api/market/symbols',
-                        'api/market/ticker',
-                        'api/market/trades',
-                        'api/market/bids',
-                        'api/market/asks',
-                        'api/market/books',
-                        'api/market/depth',
-                        'tradingview/history',
-                    ],
+                    'get': {
+                        'api/status': 1,
+                        'api/v3/servertime': 1,
+                        'api/market/symbols': 1,
+                        'api/market/ticker': 1,
+                        'api/market/trades': 1,
+                        'api/market/bids': 1,
+                        'api/market/asks': 1,
+                        'api/market/books': 1,
+                        'api/market/depth': 1,
+                        'tradingview/history': 1,
+                    },
                 },
                 'private': {
-                    'post': [
-                        'api/market/wallet',
-                        'api/market/balances',
-                        'api/market/v2/place-bid',
-                        'api/market/v2/place-ask',
-                        'api/market/place-ask-by-fiat',
-                        'api/market/v2/cancel-order',
-                        'api/market/my-open-orders',
-                        'api/market/my-order-history',
-                        'api/market/order-info',
-                        'api/crypto/addresses',
-                        'api/crypto/withdraw',
-                        'api/crypto/deposit-history',
-                        'api/crypto/withdraw-history',
-                        'api/crypto/generate-address',
-                        'api/fiat/accounts',
-                        'api/fiat/withdraw',
-                        'api/fiat/deposit-history',
-                        'api/fiat/withdraw-history',
-                        'api/market/wstoken',
-                        'api/user/limits',
-                        'api/user/trading-credits',
-                    ],
+                    'get':  {
+                        'api/v3/market/order-info': 1,
+                        'api/v3/market/my-open-orders': 1,
+                        'api/v3/market/my-order-history': 1,
+                    },
+                    'post': {
+                        'api/v3/market/wallet': 1,
+                        'api/v3/market/balances': 1,
+                        'api/v3/market/place-bid': 1,
+                        'api/v3/market/place-ask': 1,
+                        'api/v3/market/cancel-order': 1,
+                        'api/v3/crypto/addresses': 1,
+                        'api/v3/crypto/withdraw': 1,
+                        'api/v3/crypto/deposit-history': 1,
+                        'api/v3/crypto/withdraw-history': 1,
+                        'api/v3/crypto/generate-address': 1,
+                        'api/v3/fiat/accounts': 1,
+                        'api/v3/fiat/withdraw': 1,
+                        'api/v3/fiat/deposit-history': 1,
+                        'api/v3/fiat/withdraw-history': 1,
+                        'api/v3/market/wstoken': 1,
+                        'api/v3/user/limits': 1,
+                        'api/v3/user/trading-credits': 1,
+                        'api/v3/crypto/internal-withdraw': 1,
+                    },
                 },
             },
             'timeout': 5000,
@@ -157,7 +161,8 @@ class bitkub(Exchange):
         return result
 
     async def fetch_balance(self, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         response = await self.privatePostApiMarketBalances(params)
         markets = response['result']
         keyMarkets = list(markets.keys())
@@ -182,7 +187,8 @@ class bitkub(Exchange):
         return result
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         if limit is None:
             limit = 10
         request = {
@@ -245,7 +251,8 @@ class bitkub(Exchange):
         }
 
     async def fetch_ticker(self, symbol, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         market = self.market(symbol)
         request = {
             'sym': market['id'],
@@ -254,7 +261,8 @@ class bitkub(Exchange):
         return self.parse_ticker(self.safe_value(response, market['id']), market)
 
     async def fetch_tickers(self, symbols=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         response = await self.publicGetApiMarketTicker(params)
         keys = list(response.keys())
         tickers = []
@@ -264,7 +272,8 @@ class bitkub(Exchange):
         return self.filter_by_array(tickers, 'id', symbols)
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         market = self.market(symbol)
         sym = str(market['id']).split('_')
         request = {
@@ -299,7 +308,8 @@ class bitkub(Exchange):
         return result
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         market = self.market(symbol)
         if type == 'market' and price == None:
             price = 0
@@ -309,12 +319,8 @@ class bitkub(Exchange):
             'rat': self.amount_to_precision(symbol, price),
             'typ': type,
         }
-        if 'sellbyfiat' in params.keys() and params['sellbyfiat'] == True:
-            method = 'privatePostApiMarketV2PlaceBid' if side == 'buy' else 'privatePostApiMarketPlaceAskByFiat'
-        else:
-            method = 'privatePostApiMarketV2PlaceBid' if side == 'buy' else 'privatePostApiMarketV2PlaceAsk'
+        method = 'privatePostApiMarketPlaceBid' if side == 'buy' else 'privatePostApiMarketPlaceAsk'
         response = await getattr(self, method)(self.extend(request, params))
-        # print(method, request, params, response)
         if 'result' in response.keys():
             order = response['result']
             id = self.safe_string(order, 'id')
@@ -358,7 +364,7 @@ class bitkub(Exchange):
         return price
 
     async def cancel_order(self, id, symbol=None, params={}):
-        await self.load_markets()
+        # await self.load_markets()
         request = {}
         if symbol is not None:
             market = self.market(symbol)
@@ -371,20 +377,21 @@ class bitkub(Exchange):
             request = {
                 'hash': id,
             }
-        return self.privatePostApiMarketV2CancelOrder(self.extend(request, params))
+        return self.privatePostApiMarketCancelOrder(self.extend(request, params))
 
     async def fetch_my_trades(self, symbol, since=None, limit=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         market = self.market(symbol)
         request = {
-            'sym': market['id'],
+            'sym': self.get_swap_sym(market['id']),
         }
         if since is not None:
             request['start'] = int(since / 1000)
             request['end'] = int(self.milliseconds() / 1000)
         if limit is not None:
             request['limit'] = limit
-        response = await self.privatePostApiMarketMyOrderHistory(self.extend(request, params))
+        response = await self.privateGetApiMarketMyOrderHistory(self.extend(request, params))
         trades = response['result']
         result = []
         for i in range(0, len(trades)):
@@ -442,7 +449,8 @@ class bitkub(Exchange):
         }
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
-        await self.load_markets()
+        if self.markets is None:
+            await self.load_markets()
         market = self.market(symbol)
         request = {
             'sym': market['id'],
@@ -455,7 +463,7 @@ class bitkub(Exchange):
         return self.parse_trades(trades, market, since, limit)
 
     async def fetch_deposit_address(self, code, params={}):
-        await self.load_markets()
+        # await self.load_markets()
         response = await self.privatePostApiCryptoAddresses(params)
         accounts = response['result']
         currency = None
@@ -476,7 +484,15 @@ class bitkub(Exchange):
 
     def nonce(self):
         return self.milliseconds()
-
+    
+    def server_time(self):
+        return requests.get(self.urls['api'] + '/api/v3/servertime').text
+    
+    def get_swap_sym(self, sym):
+        sym_swap = sym.split('_')
+        sym = f'{sym_swap[1]}_{sym_swap[0]}'
+        return sym
+    
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = '/' + path
         if api == 'public':
@@ -484,17 +500,27 @@ class bitkub(Exchange):
                 url += '?' + self.urlencode(params)
         elif api == 'private':
             self.check_required_credentials()
-            query = self.extend(params, {
-                'ts': self.nonce(),
-            })
-            request = self.json(query)
-            signature = self.hmac(self.encode(request), self.encode(self.secret))
-            body = self.json(self.extend(json.loads(request), {'sig': signature}))
+            server_time = self.server_time()
+            if method == 'GET':
+                url += '?' + self.urlencode(params)
+                signing = f"{server_time}{method}{url}"
+            else:
+                signing = f"{server_time}{method}{url}" + json.dumps(params, separators=(',', ':'), sort_keys=True)
+                body = self.json(params)
+            # print('signing:', signing)
+            signature = self.hmac(signing.encode(), self.secret.encode())
+            # print('secret:', self.secret)
+            # print('signature:', signature)
+            # print('body:', body)
+            # body = self.json(self.extend(json.loads(request), {'sig': signature}))
             headers = {
-                'X-BTK-APIKEY': self.apiKey,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
+                "ACCEPT": "application/json",
+                "CONTENT-TYPE": "application/json",
+                "X-BTK-TIMESTAMP": "{0}".format(server_time),
+                "X-BTK-APIKEY": "{0}".format(self.apiKey),
+                "X-BTK-SIGN": "{0}".format(signature)
             }
+            # print('headers:', headers)
         else:
             url = '/' + path
         url = self.urls['api'] + url
