@@ -29,7 +29,7 @@ import ccxt_bk.async_support.bitkub as ccxt_bk
 # -----------------------------------------------------------------------------
 
 bot_name = 'MaoMao'
-bot_vesion = '1.0'
+bot_vesion = '1.1'
 
 bot_fullname = f'{bot_name} Spot (Bitkub) version {bot_vesion}'
 
@@ -1505,14 +1505,15 @@ async def mm_strategy():
         exchange = await getExchange()
 
         tickets = await retry(exchange.fetch_tickers, limit=5)
-        balance = await retry(exchange.fetch_balance, limit=5)
+        # balance = await retry(exchange.fetch_balance, limit=5)
 
         marginType = config.margin_type[0]
 
-        ex_balances = balance['balances']
-        mm_positions = [b for b in ex_balances if float(b['total']) != 0 
-                    and b['asset'] != marginType
-                    and f"{marginType}_{b['asset']}" in watch_list]
+        # ex_balances = balance['balances']
+        # mm_positions = [b for b in ex_balances if float(b['total']) != 0 
+        #             and b['asset'] != marginType
+        #             and f"{marginType}_{b['asset']}" in watch_list]
+        mm_positions, margin_balance  = await get_all_positions(exchange, marginType)
 
         # SL
         exit_loops = []
@@ -1522,6 +1523,8 @@ async def mm_strategy():
         min_tl_rate = config.min_tl_rate / 100.0
         for position in mm_positions:
             symbol = f"{marginType}_{position['asset']}"
+            if symbol not in all_positions.keys():
+                continue
             marketPrice = tickets[symbol]['last'] if symbol in tickets.keys() else 0.0
             position_infos = orders_history[symbol]['positions']['spot']['infos']
             for coid in position_infos.keys():
@@ -1764,19 +1767,22 @@ async def update_tailing_stop():
         print('TL Stop updating...')
         exchange = await getExchange()
 
-        balance = await retry(exchange.fetch_balance, limit=5)
+        # balance = await retry(exchange.fetch_balance, limit=5)
 
         marginType = config.margin_type[0]
 
-        ex_balances = balance['balances']
-        tl_positions = [b for b in ex_balances if float(b['total']) != 0 
-                    and b['asset'] != marginType
-                    and f"{marginType}_{b['asset']}" in watch_list]
+        # ex_balances = balance['balances']
+        # tl_positions = [b for b in ex_balances if float(b['total']) != 0 
+        #             and b['asset'] != marginType
+        #             and f"{marginType}_{b['asset']}" in watch_list]
+        tl_positions, margin_balance = await get_all_positions(exchange, marginType)
         
         tl_notify = []
         min_tl_rate = config.min_tl_rate / 100.0
         for position in tl_positions:
             symbol = f"{marginType}_{position['asset']}"
+            if symbol not in all_positions.keys():
+                continue
             highPrice = all_candles[symbol]['high'][-1] if symbol in all_candles.keys() else 0.0
             closePrice = all_candles[symbol]['close'][-1] if symbol in all_candles.keys() else 0.0
             if highPrice <= 0.0 or closePrice <= 0.0:
@@ -1875,19 +1881,22 @@ async def update_tailing_stop_rt():
         exchange = await getExchange()
 
         tickets = await retry(exchange.fetch_tickers, limit=5)
-        balance = await retry(exchange.fetch_balance, limit=5)
+        # balance = await retry(exchange.fetch_balance, limit=5)
 
         marginType = config.margin_type[0]
 
-        ex_balances = balance['balances']
-        tl_positions = [b for b in ex_balances if float(b['total']) != 0 
-                    and b['asset'] != marginType
-                    and f"{marginType}_{b['asset']}" in watch_list]
+        # ex_balances = balance['balances']
+        # tl_positions = [b for b in ex_balances if float(b['total']) != 0 
+        #             and b['asset'] != marginType
+        #             and f"{marginType}_{b['asset']}" in watch_list]
+        tl_positions, margin_balance = await get_all_positions(exchange, marginType)
         
         tl_notify = []
         min_tl_rate = config.min_tl_rate / 100.0
         for position in tl_positions:
             symbol = f"{marginType}_{position['asset']}"
+            if symbol not in all_positions.keys():
+                continue
             lastPrice = tickets[symbol]['last'] if symbol in tickets.keys() else 0.0
             highPrice = all_candles[symbol]['high'][-1] if symbol in all_candles.keys() else 0.0
             closePrice = all_candles[symbol]['close'][-1] if symbol in all_candles.keys() else 0.0
@@ -1980,22 +1989,41 @@ async def update_tailing_stop_rt():
 
     return
 
+async def get_all_positions(exchange, marginType):
+    try:
+        balance = await retry(exchange.fetch_balance, limit=5)
 
+        ex_balances = balance['balances']
+        positions = [b for b in ex_balances if float(b['free']) != 0.0 
+                    and b['asset'] != marginType
+                    and f"{marginType}_{b['asset']}" in watch_list]
+        margin_balances = [b for b in ex_balances if b['asset'] == marginType]
+        margin_balance = float(margin_balances[0]['free'])
+
+        # logger.debug(f'get_all_positions {positions}')
+
+    except Exception as ex:
+        raise ex
+    
+    return positions, margin_balance
+ 
 async def update_all_balance(notifyLine=False, updateOrder=False):
     global all_positions, balance_entry, balance_total, count_trade, orders_history
     try:
         exchange = await getExchange()
 
         tickets = await retry(exchange.fetch_tickers, limit=5)
-        balance = await retry(exchange.fetch_balance, limit=5)
+        # balance = await retry(exchange.fetch_balance, limit=5)
             
         marginType = config.margin_type[0]
 
-        ex_balances = balance['balances']
-        balances = [b for b in ex_balances if float(b['free']) != 0.0 
-                    and b['asset'] != marginType
-                    and f"{marginType}_{b['asset']}" in watch_list]
-        # balances = [b for b in ex_balances if float(b['total']) != 0]
+        # ex_balances = balance['balances']
+        # balances = [b for b in ex_balances if float(b['free']) > 1.0 
+        #             and b['asset'] != marginType
+        #             and f"{marginType}_{b['asset']}" in watch_list]
+        # # balances = [b for b in ex_balances if float(b['total']) != 0]
+        balances, margin_balance = await get_all_positions(exchange, marginType)
+        # logger.debug(f'balances: {balances}')
 
         all_positions = pd.DataFrame(balances, columns=BALANCE_COLUMNS)
         # all_positions.rename(columns={"asset": "symbol"}, inplace=True)
@@ -2018,6 +2046,7 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
 
             loops = [update_open_orders(exchange, symbol) for symbol in all_positions['symbol']]
             all_positions["Margin"] = await gather(*loops)
+
         else:
             def f(symbol):
                 if 'spot' in orders_history[symbol]['positions'].keys():
@@ -2034,19 +2063,22 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
 
         all_positions["unrealizedProfit"] = all_positions['unrealizedPrice'] - all_positions["Margin"]
         all_positions['unrealizedProfit'] = all_positions['unrealizedProfit'].round(4)
+                    
+        all_positions.drop(all_positions[all_positions['Margin'].eq(0.0)].index, inplace=True)
+        all_positions.reset_index(drop=True, inplace=True)
 
         count_trade = len(all_positions)
 
         ub_msg = []
-        ub_msg.append('รายงานสรุป')
         ub_msg.append(f'{bot_name} {bot_vesion}')
 
         if config.limit_trade > 0:
             ub_msg.append(f"# Count Trade: {count_trade}/{config.limit_trade}")
             print(f"Count Trade : {count_trade}/{config.limit_trade}")
 
-        margin_balances = [b for b in ex_balances if b['asset'] == marginType]
-        balance_entry[marginType] = float(margin_balances[0]['free'])
+        # margin_balances = [b for b in balances if str(b['asset']) == marginType]
+        # balance_entry[marginType] = float(margin_balances[0]['free'])
+        balance_entry[marginType] = margin_balance
 
         sumUnrealizedPrice =  all_positions['unrealizedPrice'].astype('float64').sum()
         sumUnrealizedProfit =  all_positions['unrealizedProfit'].astype('float64').sum()
