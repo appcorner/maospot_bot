@@ -504,8 +504,9 @@ class bitkub(Exchange, ImplicitAPI):
                 url += '?' + self.urlencode(params)
                 signing = f"{server_time}{method}{url}"
             else:
-                signing = f"{server_time}{method}{url}" + json.dumps(params, separators=(',', ':'), sort_keys=True)
-                body = self.json(params)
+                payload = json.dumps(params, separators=(',', ':'), sort_keys=True)
+                signing = f"{server_time}{method}{url}" + payload
+                body = payload
             # print('signing:', signing)
             signature = self.hmac(signing.encode(), self.secret.encode())
             # print('secret:', self.secret)
