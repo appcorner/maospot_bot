@@ -314,7 +314,7 @@ class bitkub(Exchange, ImplicitAPI):
         if type == 'market' and price == None:
             price = 0
         request = {
-            'sym': market['id'],
+            'sym': self.get_swap_sym(market['id']),
             'amt': self.price_to_precision(symbol, amount) if side == 'buy' else amount,
             'rat': self.amount_to_precision(symbol, price),
             'typ': type,
@@ -488,9 +488,16 @@ class bitkub(Exchange, ImplicitAPI):
     def server_time(self):
         return requests.get(self.urls['api'] + '/api/v3/servertime').text
     
-    def get_swap_sym(self, sym):
+    def get_swap_sym(self, sym, is_base_quote=True):
         sym_swap = sym.split('_')
-        sym = f'{sym_swap[1]}_{sym_swap[0]}'
+        
+        if is_base_quote:
+            if sym_swap[0] == 'THB':
+                sym = f'{sym_swap[1]}_{sym_swap[0]}'
+        else:
+            if sym_swap[0] != 'THB':
+                sym = f'{sym_swap[1]}_{sym_swap[0]}'
+
         return sym
     
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
