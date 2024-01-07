@@ -401,8 +401,12 @@ class bitkub(Exchange, ImplicitAPI):
             side = self.safe_string(trades[i], 'side')
             takerOrMaker = self.safe_value(trades[i], 'taken_by_me')
             price = self.safe_float(trades[i], 'rate')
-            amount = self.safe_float(trades[i], 'amount')
-            cost = float(price * amount)
+            if side == 'sell':
+                amount = self.safe_float(trades[i], 'amount')
+                cost = float(price * amount)
+            else:
+                cost = self.safe_float(trades[i], 'amount')
+                amount = float(cost / price)
             fee = self.safe_float(trades[i], 'fee')
             timestamp = self.safe_timestamp(trades[i], 'ts')
             clientOrderId = self.safe_string(trades[i], 'client_id', '')
@@ -425,28 +429,28 @@ class bitkub(Exchange, ImplicitAPI):
             })
         return result
     
-    def parse_trade(self, trade, market=None):
-        timestamp = int(trade[0]) * 1000
-        side = None
-        side = trade[3].lower()
-        price = float(trade[1])
-        amount = float(trade[2])
-        cost = float(price * amount)
-        return {
-            'info': trade,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-            'symbol': market['symbol'],
-            'id': None,
-            'order': None,
-            'type': None,
-            'takerOrMaker': None,
-            'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
-            'fee': None,
-        }
+    # def parse_trade(self, trade, market=None):
+    #     timestamp = int(trade[0]) * 1000
+    #     side = None
+    #     side = trade[3].lower()
+    #     price = float(trade[1])
+    #     amount = float(trade[2])
+    #     cost = float(price * amount)
+    #     return {
+    #         'info': trade,
+    #         'timestamp': timestamp,
+    #         'datetime': self.iso8601(timestamp),
+    #         'symbol': market['symbol'],
+    #         'id': None,
+    #         'order': None,
+    #         'type': None,
+    #         'takerOrMaker': None,
+    #         'side': side,
+    #         'price': price,
+    #         'amount': amount,
+    #         'cost': cost,
+    #         'fee': None,
+    #     }
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         if self.markets is None:
