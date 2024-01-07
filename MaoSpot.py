@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from LineNotify import LineNotify
 import config
 import os
+import sys
 import pathlib
 import logging
 from logging.handlers import RotatingFileHandler
@@ -931,6 +932,7 @@ async def update_open_orders(exchange, symbol):
         my_trades = await retry(fetch_my_trades, limit=3)
         columns = ['id', 'timestamp', 'datetime', 'symbol', 'order', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'positionSide', 'clientOrderId']
         # display_columns = ['datetime', 'symbol', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'clientOrderId']
+        # logger.debug(f'{symbol} update_open_orders: my_trades\n{my_trades}')   
         open_orders = pd.DataFrame(my_trades, columns=columns)
         # open_orders.drop(open_orders[~open_orders['clientOrderId'].str.startswith(bot_name.lower())].index, inplace=True)
         last_sell = open_orders.loc[open_orders['side'].eq('sell').idxmax()]
@@ -939,7 +941,7 @@ async def update_open_orders(exchange, symbol):
             open_orders.reset_index(drop=True, inplace=True)
         if len(open_orders) == 0:
             return total_cost
-        # logger.debug(f'{symbol} update_open_orders {open_orders}')
+        # logger.debug(f'{symbol} update_open_orders: open_orders\n{open_orders}')
         for idx in range(0, len(open_orders)):
             order = open_orders.loc[idx]
             clientOrderId = order['clientOrderId'] + '#' + str(order['id'])
@@ -2305,6 +2307,13 @@ if __name__ == "__main__":
 
         history_file_csv = './datas/orders_history.csv'
         history_json_path = './datas/orders_history.json'
+
+        if '-clear' in sys.argv:
+            if os.path.exists(history_file_csv):
+                os.remove(history_file_csv)
+            if os.path.exists(history_json_path):
+                os.remove(history_json_path)
+            print('clear history file')
 
         logger = logging.getLogger("App Log")
         logger.setLevel(config.LOG_LEVEL)
