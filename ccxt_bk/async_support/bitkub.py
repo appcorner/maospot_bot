@@ -390,7 +390,7 @@ class bitkub(Exchange, ImplicitAPI):
             request['start'] = int(since / 1000)
             request['end'] = int(self.milliseconds() / 1000)
         if limit is not None:
-            request['limit'] = limit
+            request['lmt'] = limit
         response = await self.privateGetApiMarketMyOrderHistory(self.extend(request, params))
         trades = response['result']
         result = []
@@ -429,6 +429,49 @@ class bitkub(Exchange, ImplicitAPI):
             })
         return result
     
+    async def fetch_my_orders(self, symbol, since=None, limit=None, params={}):
+        if self.markets is None:
+            await self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'sym': self.get_swap_sym(market['id']),
+        }
+        response = await self.privateGetApiMarketMyOpenOrders(self.extend(request, params))
+        trades = response['result']
+        result = []
+        for i in range(0, len(trades)):
+            id = self.safe_string(trades[i], 'id')
+            order = id
+            type = self.safe_string(trades[i], 'type')
+            side = self.safe_string(trades[i], 'side')
+            price = self.safe_float(trades[i], 'rate')
+            if side == 'sell':
+                amount = self.safe_float(trades[i], 'amount')
+                cost = float(price * amount)
+            else:
+                cost = self.safe_float(trades[i], 'amount')
+                amount = float(cost / price)
+            fee = self.safe_float(trades[i], 'fee')
+            timestamp = self.safe_timestamp(trades[i], 'ts')
+            clientOrderId = self.safe_string(trades[i], 'client_id', '')
+            result.append({
+                'info': trades[i],
+                'id': id,
+                'timestamp': timestamp,
+                'datetime': self.iso8601(timestamp),
+                'symbol': symbol,
+                'order': order,
+                'type': type,
+                'side': side,
+                'price': price,
+                'amount': amount,
+                'cost': cost,
+                'fee': fee,
+                'positionSide': 'spot',
+                'clientOrderId': clientOrderId,
+            })
+        return result
+        
     # def parse_trade(self, trade, market=None):
     #     timestamp = int(trade[0]) * 1000
     #     side = None

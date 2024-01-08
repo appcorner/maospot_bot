@@ -889,7 +889,8 @@ def update_order_history(symbol, orderType:str, order, params={}):
         elif 'infos' not in orders_history[symbol]['positions'][positionSide].keys():
             orders_history[symbol]['positions'][positionSide]['infos'] = {}
 
-        clientOrderId = order['clientOrderId'] + '#' + str(order['id'])
+        # clientOrderId = order['clientOrderId'] + '#' + str(order['id'])
+        clientOrderId = '#' + str(order['id'])
         position_infos = orders_history[symbol]['positions'][positionSide]['infos']
         position_info = position_infos[clientOrderId] if clientOrderId in position_infos.keys() else {}
         if orderType.lower() == 'open':
@@ -930,6 +931,8 @@ async def update_open_orders(exchange, symbol):
         async def fetch_my_trades():
             return await exchange.fetch_my_trades(symbol)
         my_trades = await retry(fetch_my_trades, limit=3)
+        if len(my_trades) == 0:
+            return total_cost
         columns = ['id', 'timestamp', 'datetime', 'symbol', 'order', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'positionSide', 'clientOrderId']
         # display_columns = ['datetime', 'symbol', 'type', 'side', 'price', 'amount', 'cost', 'fee', 'clientOrderId']
         # logger.debug(f'{symbol} update_open_orders: my_trades\n{my_trades}')   
