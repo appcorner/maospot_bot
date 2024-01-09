@@ -3,4 +3,4 @@ pandas==1.5.2
 pandas-ta==0.3.14b0
 mplfinance==0.12.9b7
 requests==2.28.2
-ccxt==2.6.35
+ccxt==4.2.8
