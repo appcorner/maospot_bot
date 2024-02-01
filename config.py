@@ -81,8 +81,8 @@ SANDBOX = (get_str(exchange,'sandbox', 'off') == 'on')
 # line
 #------------------------------------------------------------
 LINE_NOTIFY_TOKEN = get_str('line','notify_token')
-remove_plot = (get_str('line','remove_plot', 'off') == 'on')
-summary_report = (get_str('line','summary_report', 'off') == 'on')
+is_remove_plot = (get_str('line','remove_plot', 'off') == 'on')
+is_summary_report = (get_str('line','summary_report', 'off') == 'on')
 is_notify_api_error = (get_str('line','notify_api_error', 'off') == 'on')
 
 #------------------------------------------------------------

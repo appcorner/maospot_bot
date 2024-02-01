@@ -30,7 +30,7 @@ import ccxt_bk.async_support.bitkub as ccxt_bk
 # -----------------------------------------------------------------------------
 
 bot_name = 'MaoMao'
-bot_vesion = '1.1'
+bot_vesion = '1.2'
 
 bot_fullname = f'{bot_name} Spot (Bitkub) version {bot_vesion}'
 
@@ -77,6 +77,7 @@ BALANCE_COLUMNS = ["asset", "free", "locked", "total"]
 # BALANCE_COLUMNS_DISPLAY = ["asset", "free", "locked", "total", "marketPrice", "Margin", "unrealizedProfit"]
 BALANCE_COLUMNS_RENAME = ["Asset", "Total", "Market Price", "Margin", "Unrealized PNL"]
 BALANCE_COLUMNS_DISPLAY = ["asset", "total", "marketPrice", "Margin", "unrealizedProfit"]
+COLUMNS_DECIMAL = [0, 6, 4, 2, 4]
 
 CSV_COLUMNS = [
         "symbol", "signal_index", "margin_type",
@@ -371,6 +372,8 @@ async def line_chart(symbol, df, msg, pd='', fibo_data=None, **kwargs):
         line_chart_ema(symbol, df, msg, pd, fibo_data, **kwargs)
 def line_chart_ema(symbol, df, msg, pd='', fibo_data=None, **kwargs):
     try:
+        plt.rcdefaults()
+        
         print(f"{symbol} create line_chart")
         data = df.tail(CANDLE_PLOT)
 
@@ -482,8 +485,7 @@ def line_chart_ema(symbol, df, msg, pd='', fibo_data=None, **kwargs):
         plt.close(fig)
 
         notify.Send_Image(msg, image_path=filename)
-        # await sleep(2)
-        if config.remove_plot:
+        if config.is_remove_plot:
             os.remove(filename)
 
     except Exception as ex:
@@ -493,6 +495,8 @@ def line_chart_ema(symbol, df, msg, pd='', fibo_data=None, **kwargs):
     return
 def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
     try:
+        plt.rcdefaults()
+
         print(f"{symbol} create line_chart")
         data = df.tail(CANDLE_PLOT)
 
@@ -608,8 +612,7 @@ def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
         plt.close(fig)
 
         notify.Send_Image(msg, image_path=filename)
-        # await sleep(2)
-        if config.remove_plot:
+        if config.is_remove_plot:
             os.remove(filename)
 
     except Exception as ex:
@@ -617,6 +620,90 @@ def line_chart_adxrsi(symbol, df, msg, pd='', fibo_data=None, **kwargs):
         logger.exception(f'line_chart {symbol}')
 
     return
+
+async def line_report(marginType, positions, report_summary, is_profitable=True):
+    try:
+        plt.rcdefaults()
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        plt.autoscale()
+
+        cell_text = []
+        for row in range(len(positions)):
+            rows = []
+            for col in range(len(positions.columns)):
+                if COLUMNS_DECIMAL[col] == 6:
+                    rows.append('%.6f' % positions.iloc[row, col])
+                elif COLUMNS_DECIMAL[col] == 4:
+                    rows.append('%.4f' % positions.iloc[row, col])
+                elif COLUMNS_DECIMAL[col] == 2:
+                    rows.append('%.2f' % positions.iloc[row, col])
+                else:
+                    rows.append(positions.iloc[row, col])
+            cell_text.append(rows)
+            # cell_text.append(positions.iloc[row])
+
+        logger.debug(cell_text)
+
+        the_table = ax.table(cellText=cell_text, colLabels=positions.columns, loc='center')
+        the_table.auto_set_font_size(False)
+        the_table.set_fontsize(16)
+        the_table.scale(2, 2)
+        # Get the extent of the table and its surrounding axes
+        fig.canvas.draw()
+        extent = the_table.get_window_extent(fig.canvas.renderer).transformed(fig.dpi_scale_trans.inverted())
+        # ["Asset", "Total", "Market Price", "Margin", "Unrealized PNL"]
+        for col in ['Asset', 'Total', 'Market Price', 'Margin']:
+            col_idx = positions.columns.get_loc(col)
+            # the_table[0, col_idx].get_text().set_color('white')
+            the_table[0, col_idx].set_facecolor("#ebebeb")
+            # the_table[0, col_idx].set_alpha(0.1)
+
+        for col in ['Unrealized PNL']:
+            col_idx = positions.columns.get_loc(col)
+            # the_table[0, col_idx].get_text().set_color('white')
+            the_table[0, col_idx].set_facecolor("#cfcfcf")
+            # the_table[0, col_idx].set_alpha(0.1)
+
+        col_idx = positions.columns.get_loc('Unrealized PNL')
+        for row in range(len(positions)):
+            cell_color = '#f8e0e0'
+            if float(positions.iloc[row, col_idx]) >= 0:
+                cell_color = '#e6f8e0'
+            for col in range(len(positions.columns)):
+                # the_table[row+1, col].get_text().set_color(cell_color)
+                the_table[row+1, col].set_facecolor(cell_color)
+                # the_table[row+1, col].set_alpha(0.1)
+
+        # Calculate the height of the table
+        table_height = extent.height / fig.dpi
+        # Set the y value for the text based on the height of the table
+        text_y = -table_height - 0.05
+        text_head = table_height
+        ax.set_axis_off()
+        bot_title = f"{bot_fullname} - {config.timeframe} - {marginType}"
+        plt.text(0, text_head+0.04, "My Profit & Loss", fontsize=36, color='#f1b90d', backgroundcolor='black', fontweight='bold', ha='center')
+        if is_profitable:
+            plt.text(0, text_y-0.04, report_summary, fontsize=16, ha='center', fontweight='bold', color='#5858fa')
+        else:
+            plt.text(0, text_y-0.04, report_summary, fontsize=16, ha='center', fontweight='bold', color='#fa5858')
+        plt.text(0, text_y-0.06, bot_title, fontsize=14, ha='center')
+
+        # fig.tight_layout()
+        
+        filename = f"./plots/reports_{marginType}.png"
+        fig.savefig(filename, bbox_inches='tight')
+
+        plt.close(fig)
+
+        # await sleep(3)
+        notify.Send_Image('Table Profit', image_path=filename)
+        if config.is_remove_plot:
+            os.remove(filename)
+
+    except Exception as ex:
+        print(type(ex).__name__, marginType, str(ex))
+        logger.exception(f'line_report {marginType}')
 
 def line_notify_err(message):
     global is_send_notify_error, last_error_message
@@ -2075,10 +2162,14 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         count_trade = len(all_positions)
 
         ub_msg = []
+        report_msg = []
+
         ub_msg.append(f'{bot_name} {bot_vesion}')
+        report_msg.append(f"=*=*= {marginType} =*=*=")
 
         if config.limit_trade > 0:
             ub_msg.append(f"# Count Trade: {count_trade}/{config.limit_trade}")
+            report_msg.append(f"Count Trade : {count_trade}/{config.limit_trade}")
             print(f"Count Trade : {count_trade}/{config.limit_trade}")
 
         # margin_balances = [b for b in balances if str(b['asset']) == marginType]
@@ -2090,26 +2181,33 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
 
         balance_total = balance_entry[marginType] + sumUnrealizedPrice
 
+        ub_msg.append(f"# {marginType}\nFree: {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f}\nPrice: {sumUnrealizedPrice:,.2f}\nProfit: {sumUnrealizedProfit:,.2f}")
+        report_msg.append(f"Free : {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f} Price : {sumUnrealizedPrice:,.2f} Profit : {sumUnrealizedProfit:,.2f}")
+        balance_change = balance_total - start_balance_total if start_balance_total > 0 else 0
+        ub_msg.append(f"# Total {balance_total:,.2f}\n# Change {balance_change:+,.2f}")
+        report_msg.append(f"Balance : {balance_total:,.2f} Change : {balance_change:+,.2f}")
+
         if len(all_positions) > 0:
             all_positions.sort_values(by=['unrealizedProfit'], ignore_index=True, ascending=False, inplace=True)
             all_positions.index = all_positions.index + 1
             display_positions = all_positions[BALANCE_COLUMNS_DISPLAY]
             display_positions.columns = BALANCE_COLUMNS_RENAME
             print(display_positions)
+            if notifyLine:
+                local_time = time.ctime(time.time())
+                report_msg.append(f'\nBot Last Processing : == {local_time} ==')
+                await line_report(marginType, display_positions, '\n'.join(report_msg), balance_change >= 0)
         else:
             print('No Balances')
 
-        ub_msg.append(f"# {marginType}\nFree: {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f}\nPrice: {sumUnrealizedPrice:,.2f}\nProfit: {sumUnrealizedProfit:,.2f}")
         print(f"Balance === {marginType} Free: {balance_entry[marginType]:,.2f}/{config.not_trade:,.2f} Price: {sumUnrealizedPrice:,.2f} Profit: {sumUnrealizedProfit:,.2f}")
-        balance_change = balance_total - start_balance_total if start_balance_total > 0 else 0
-        ub_msg.append(f"# Total {balance_total:,.2f}\n# Change {balance_change:+,.2f}")
         print(f"Total ===== {balance_total:,.2f} Change: {balance_change:+,.2f}")
 
-        if notifyLine:
-            notify.Send_Text('\n'.join(ub_msg))
+        # if notifyLine:
+        #     notify.Send_Text('\n'.join(ub_msg))
 
-        keysList = list(orders_history.keys())
-        logger.debug(f'symbol orders history: {keysList}')
+        # keysList = list(orders_history.keys())
+        # logger.debug(f'symbol orders history: {keysList}')
         save_orders_history_csv(history_file_csv)
         save_orders_history_json(history_json_path)
 
@@ -2198,7 +2296,7 @@ async def main():
     load_orders_history_json(history_json_path)
 
     # แสดงค่า positions & balance
-    await update_all_balance(notifyLine=config.summary_report, updateOrder=True)
+    await update_all_balance(notifyLine=config.is_summary_report, updateOrder=True)
     start_balance_total = balance_total
 
     # if config.IS_CLEAR_OLD_ORDER:
@@ -2244,7 +2342,7 @@ async def main():
                 local_time = time.ctime(seconds)
                 print(f'calculate new indicator: {local_time}')
                 
-                await update_all_balance(notifyLine=config.summary_report, updateOrder=True)
+                await update_all_balance(notifyLine=config.is_summary_report, updateOrder=True)
 
                 t1=time.time()
 
