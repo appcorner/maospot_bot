@@ -2409,7 +2409,7 @@ if __name__ == "__main__":
         history_file_csv = './datas/orders_history.csv'
         history_json_path = './datas/orders_history.json'
 
-        if '-clear' in sys.argv:
+        if '-keep' not in sys.argv:
             if os.path.exists(history_file_csv):
                 os.remove(history_file_csv)
             if os.path.exists(history_json_path):
@@ -2445,3 +2445,6 @@ if __name__ == "__main__":
         # if os.path.exists(history_file_csv):
         #     os.rename(history_file_csv, history_file_csv.replace('.csv', f'{DATE_SUFFIX}.csv'))
         # save_orders_history_json(history_json_path)
+
+#build exe
+#pyinstaller --onefile --clean --collect-submodule application MaoSpot.py

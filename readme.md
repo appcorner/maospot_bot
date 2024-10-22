@@ -191,3 +191,6 @@
 ## donate
 - ETH: 0xeAfe7f1Db46E2c007b60174EB4527ab38bd54B54
 - DOGE: DCkpCgt1HUVhCsvJVW7YA4E4NkxMsLHPz8
+
+## exe
+- https://mega.nz/file/DFhgESgS#w4lryIe9wERVoLI6amCcneYDm76sAAeljhDDnUUP9Z8

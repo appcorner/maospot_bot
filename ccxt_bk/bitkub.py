@@ -117,7 +117,7 @@ class bitkub(Exchange, ImplicitAPI):
 
     def fetch_markets(self, params={}):
         response = self.publicGetMarketSymbols(params)
-        markets = response['result']
+        markets = response['result'] if 'result' in response.keys() else []
         settings = self.describe()
         result = []
         for i in range(0, len(markets)):
@@ -163,7 +163,7 @@ class bitkub(Exchange, ImplicitAPI):
         if self.markets is None:
             self.load_markets()
         response = self.privatePostApiMarketBalances(params)
-        markets = response['result']
+        markets = response['result'] if 'result' in response.keys() else {}
         keyMarkets = list(markets.keys())
         result = {}
         free = {}
