@@ -76,7 +76,7 @@ BALANCE_COLUMNS = ["asset", "free", "locked", "total"]
 # BALANCE_COLUMNS_DISPLAY = ["Symbol", "Free", "Locked", "Total", "Symbol", "Market Price", "Unrealized Price"]
 # BALANCE_COLUMNS_DISPLAY = ["asset", "free", "locked", "total", "marketPrice", "Margin", "unrealizedProfit"]
 BALANCE_COLUMNS_RENAME = ["Asset", "Total", "Market Price", "Margin", "Unrealized PNL"]
-BALANCE_COLUMNS_DISPLAY = ["asset", "total", "marketPrice", "Margin", "unrealizedProfit"]
+BALANCE_COLUMNS_DISPLAY = ["asset", "total", "marketPrice", "margin", "unrealizedProfit"]
 COLUMNS_DECIMAL = [0, 6, 4, 2, 4]
 
 CSV_COLUMNS = [
@@ -1607,6 +1607,8 @@ async def mm_strategy():
         #             and f"{marginType}_{b['asset']}" in watch_list]
         mm_positions, margin_balance  = await get_all_positions(exchange, marginType)
 
+        all_positions = await update_all_positions(exchange, tickets, mm_positions)
+
         # SL
         exit_loops = []
         cancel_loops = []
@@ -1648,138 +1650,64 @@ async def mm_strategy():
             txt_notify = '\n'.join(mm_notify)
             line_notify(f'\nสถานะ...\n{txt_notify}')
 
-#         hasMMPositions = False
-#         balance = await exchange.fetch_balance()
-#         if balance is None:
-#             print('เกิดข้อผิดพลาดที่ api fetch_balance')
-#             return
-#         ex_positions = balance['info']['positions']
-#         if len(ex_positions) == 0:
-#             return
-#         mm_positions = [position for position in ex_positions 
-#             if position['symbol'] in all_symbols.keys() and
-#                 all_symbols[position['symbol']]['quote'] in config.margin_type and 
-#                 float(position['positionAmt']) != 0]
+        # hasMMPositions = False
+        # sumProfit = sum([float(position['unrealizedProfit']) for position in all_positions])
+        # sumMargin = sum([float(position['margin']) for position in all_positions])
+        sumProfit =  all_positions['unrealizedProfit'].astype('float64').sum()
+        sumMargin =  all_positions['margin'].astype('float64').sum()
 
-#         mm_positions = sorted(mm_positions, key=lambda k: float(k['unrealizedPrice']))
+        # count_trade = len(all_positions)
 
-#         # sumProfit = sum([float(position['unrealizedPrice']) for position in mm_positions])
-#         sumLongProfit = sum([float(position['unrealizedPrice']) for position in mm_positions if float(position['positionAmt']) >= 0])
-#         sumShortProfit = sum([float(position['unrealizedPrice']) for position in mm_positions if float(position['positionAmt']) < 0])
-#         sumProfit = sumLongProfit + sumShortProfit
+        margin_rate = 1.0
+        if config.is_percent_mode:
+            margin_rate = sumMargin / 100.0
 
-#         sumLongMargin = sum([float(position['initialMargin']) for position in mm_positions if float(position['positionAmt']) >= 0])
-#         sumShortMargin = sum([float(position['initialMargin']) for position in mm_positions if float(position['positionAmt']) < 0])
-#         sumMargin = sumLongMargin + sumShortMargin
+        tp_profit = config.tp_profit * margin_rate
+        sl_profit = config.sl_profit * margin_rate
 
-#         # count_trade = len(mm_positions)
+        logger.debug(f'MM TP/SL - All: {tp_profit:.4f}/-{sl_profit:.4f} Profit: {sumProfit:.4f} Margin: {sumMargin:.4f}')
 
-#         # Money Management (MM) Strategy
-#         logger.debug(f'MM Profit - Long[{sumLongProfit:.4f}] + Short[{sumShortProfit:.4f}] = All[{sumProfit:.4f}]')
-#         # logger.debug(f'PNL: {config.TP_PNL}, {config.SL_PNL}')
+        # close all positions by TP/SL profit setting
+        if (tp_profit > 0 and sumProfit > tp_profit) or \
+            (sl_profit > 0 and sumProfit < -sl_profit):
 
-#         cost_rate = 1.0
-#         long_margin_rate = 1.0
-#         short_margin_rate = 1.0
-#         margin_rate = 1.0
-#         if config.is_percent_mode:
-#             cost_rate = config.cost_amount / 100.0
-#             long_margin_rate = sumLongMargin / 100.0
-#             short_margin_rate = sumShortMargin / 100.0
-#             margin_rate = sumMargin / 100.0
+            mm_type = 'TP' if sumProfit > tp_profit else 'SL'
 
-#         tp_profit = config.TP_Profit * margin_rate
-#         sl_profit = config.SL_Profit * margin_rate
+            exit_loops = []
+            cancel_loops = []
+            mm_notify = []
+            # exit all positions
+            for index, position in all_positions.iterrows():
+                symbol = position['symbol']
+                positionAmt = float(position['total'])
+                if positionAmt > 0.0:
+                    print(f"[{symbol}] สถานะ : {mm_type} MM Exit processing...")
+                    exit_loops.append(spot_close(exchange, symbol, positionAmt))
+                    # line_notify(f'{symbol}\nสถานะ : MM Exit\nProfit = {sumProfit}')
+                    mm_notify.append(f'{symbol} : {mm_type} MM Exit')
+                    cancel_loops.append(cancel_order(exchange, symbol))
 
-#         logger.debug(f'MM TP/SL - All: {tp_profit:.4f}/-{sl_profit:.4f}')
+            try:
+                if len(exit_loops) > 0:
+                    await gather(*exit_loops)
+                    hasMMPositions = True
+            except Exception as ex:
+                print(type(ex).__name__, str(ex))
+                logger.exception('mm_strategy exit all')
 
-#         # close all positions by TP/SL profit setting
-#         if (tp_profit > 0 and sumProfit > tp_profit) or \
-#             (sl_profit > 0 and sumProfit < -sl_profit):
+            try:
+                if len(cancel_loops) > 0:
+                    await gather(*cancel_loops)
+            except Exception as ex:
+                print(type(ex).__name__, str(ex))
+                logger.exception('mm_strategy cancel all')
 
-#             exit_loops = []
-#             cancel_loops = []
-#             mm_notify = []
-#             # exit all positions
-#             for position in mm_positions:
-#                 symbol = position['symbol']
-#                 positionAmt = float(position['positionAmt'])
-#                 if positionAmt > 0.0:
-#                     print(f"[{symbol}] สถานะ : MM Long Exit processing...")
-#                     exit_loops.append(spot_close(exchange, symbol, positionAmt))
-#                     # line_notify(f'{symbol}\nสถานะ : MM Long Exit\nProfit = {sumProfit}')
-#                     mm_notify.append(f'{symbol} : MM Long Exit')
-#                     cancel_loops.append(cancel_order(exchange, symbol, 'long'))
-
-#             try:
-#                 if len(exit_loops) > 0:
-#                     await gather(*exit_loops)
-#                     hasMMPositions = True
-#             except Exception as ex:
-#                 print(type(ex).__name__, str(ex))
-#                 logger.exception('mm_strategy exit all')
-
-#             try:
-#                 if len(cancel_loops) > 0:
-#                     await gather(*cancel_loops)
-#             except Exception as ex:
-#                 print(type(ex).__name__, str(ex))
-#                 logger.exception('mm_strategy cancel all')
-
-#             if len(mm_notify) > 0:
-#                 txt_notify = '\n'.join(mm_notify)
-#                 line_notify(f'\nสถานะ...\n{txt_notify}\nProfit = {sumProfit:.4f}')
-        
-#         else:
-
-#             # close target position by LONG/SHORT TP/SL PNL setting
-#             exit_loops = []
-#             cancel_loops = []
-#             logger.debug(f'MM TP/SL PNL - Long: {config.TP_PNL_Long*cost_rate:.4f}/{-config.SL_PNL_Long*cost_rate:.4f} Short: {config.TP_PNL_Short*cost_rate:.4f}/{-config.SL_PNL_Long*cost_rate:.4f}')
-#             if config.TP_PNL_Long > 0:
-#                 tp_lists = [position for position in mm_positions if 
-#                     float(position['positionAmt']) > 0.0 and 
-#                     float(position['unrealizedPrice']) > config.TP_PNL_Long*cost_rate]
-#                 if len(tp_lists) > 0:
-#                     logger.debug(f'TP_PNL_Long {tp_lists}')
-#                 for position in tp_lists:
-#                     symbol = position['symbol']
-#                     positionAmt = float(position['positionAmt'])
-#                     unrealizedPrice = float(position['unrealizedPrice'])
-#                     print(f"[{symbol}] สถานะ : MM Long Exit processing...")
-#                     exit_loops.append(spot_close(exchange, symbol, positionAmt))
-#                     line_notify(f'{symbol}\nสถานะ : MM Long Exit\nPNL = {unrealizedPrice}')
-#                     cancel_loops.append(cancel_order(exchange, symbol, 'long'))
-#             if config.SL_PNL_Long > 0:
-#                 sl_lists = [position for position in mm_positions if 
-#                     float(position['positionAmt']) > 0.0 and 
-#                     float(position['unrealizedPrice']) < -config.SL_PNL_Long*cost_rate]
-#                 if len(sl_lists) > 0:
-#                     logger.debug(f'SL_PNL_Long {sl_lists}')
-#                 for position in sl_lists:
-#                     symbol = position['symbol']
-#                     positionAmt = float(position['positionAmt'])
-#                     unrealizedPrice = float(position['unrealizedPrice'])
-#                     print(f"[{symbol}] สถานะ : MM Long Exit processing...")
-#                     exit_loops.append(spot_close(exchange, symbol, positionAmt))
-#                     line_notify(f'{symbol}\nสถานะ : MM Long Exit\nPNL = {unrealizedPrice}')
-#                     cancel_loops.append(cancel_order(exchange, symbol, 'long'))
-
-#             try:
-#                 if len(exit_loops) > 0:
-#                     await gather(*exit_loops)
-#                     hasMMPositions = True
-#             except Exception as ex:
-#                 print(type(ex).__name__, str(ex))
-#                 logger.exception('mm_strategy exit pnl')
-#             try:
-#                 if len(cancel_loops) > 0:
-#                     await gather(*cancel_loops)
-#             except Exception as ex:
-#                 print(type(ex).__name__, str(ex))
-#                 logger.exception('mm_strategy cancel pnl')
+            if len(mm_notify) > 0:
+                txt_notify = '\n'.join(mm_notify)
+                line_notify(f'\nสถานะ...\n{txt_notify}\nProfit = {sumProfit:.4f}')
 
 #         if hasMMPositions == False:
+#             # all_positions = pd.DataFrame(columns=BALANCE_COLUMNS)
 #             # notify risk
 #             # balance = await exchange.fetch_balance()
 #             # if balance is None:
@@ -2098,7 +2026,53 @@ async def get_all_positions(exchange, marginType):
         raise ex
     
     return positions, margin_balance
- 
+
+async def update_all_positions(exchange, tickets, balances, updateOrder=False):
+    try:
+        marginType = config.margin_type[0]
+
+        my_positions = pd.DataFrame(balances, columns=BALANCE_COLUMNS)
+        my_positions["symbol"] = my_positions["asset"].apply(lambda x: f'{marginType}_{x}')
+        my_positions["marketPrice"] = my_positions['symbol'].apply(lambda x: tickets[x]['last'] if x in tickets.keys() else 0.0)
+        my_positions['unrealizedPrice'] = my_positions['total'].astype('float64') * my_positions["marketPrice"].astype('float64')
+        my_positions['unrealizedPrice'] = my_positions['unrealizedPrice'].round(4)
+        
+        if updateOrder:
+            open_symbols = my_positions['symbol'].to_list()
+            logger.debug(f'open_symbols: {open_symbols}')
+            loops = [async_close_order_history(symbol, 'spot') for symbol in orders_history.keys() if symbol not in open_symbols]
+            await gather(*loops)
+
+            loops = [update_open_orders(exchange, symbol) for symbol in my_positions['symbol']]
+            my_positions["margin"] = await gather(*loops)
+
+        else:
+            def f(symbol):
+                if 'spot' in orders_history[symbol]['positions'].keys():
+                    if orders_history[symbol]['positions']['spot']['status'] == 'close':
+                        return 0.0
+                    infos = orders_history[symbol]['positions']['spot']['infos']
+                    if len(infos.keys()) == 0:
+                        return 0.0
+                    else:
+                        return sum(infos[k]['cost'] if 'cost' in infos[k].keys() else 0.0 for k in infos.keys())
+                else:
+                    return 0.0
+            my_positions["margin"] = my_positions['symbol'].apply(lambda x: f(x))
+
+        my_positions["unrealizedProfit"] = my_positions['unrealizedPrice'] - my_positions["margin"]
+        my_positions['unrealizedProfit'] = my_positions['unrealizedProfit'].round(4)
+                    
+        my_positions.drop(my_positions[my_positions['margin'].eq(0.0)].index, inplace=True)
+        my_positions.reset_index(drop=True, inplace=True)
+
+    except Exception as ex:
+        print(type(ex).__name__, str(ex))
+        logger.exception('update_all_positions')
+        my_positions = all_positions
+    
+    return my_positions
+
 async def update_all_balance(notifyLine=False, updateOrder=False):
     global all_positions, balance_entry, balance_total, count_trade, orders_history
     try:
@@ -2117,47 +2091,49 @@ async def update_all_balance(notifyLine=False, updateOrder=False):
         balances, margin_balance = await get_all_positions(exchange, marginType)
         # logger.debug(f'balances: {balances}')
 
-        all_positions = pd.DataFrame(balances, columns=BALANCE_COLUMNS)
-        # all_positions.rename(columns={"asset": "symbol"}, inplace=True)
-        all_positions["symbol"] = all_positions["asset"].apply(lambda x: f'{marginType}_{x}')
-        # all_positions.reset_index(drop=True, inplace=True)
-        # all_positions.index = all_positions.index + 1
+        # all_positions = pd.DataFrame(balances, columns=BALANCE_COLUMNS)
+        # # all_positions.rename(columns={"asset": "symbol"}, inplace=True)
+        # all_positions["symbol"] = all_positions["asset"].apply(lambda x: f'{marginType}_{x}')
+        # # all_positions.reset_index(drop=True, inplace=True)
+        # # all_positions.index = all_positions.index + 1
         
-        all_positions["marketPrice"] = all_positions['symbol'].apply(lambda x: tickets[x]['last'] 
-                                                                     if x in tickets.keys() else 0.0)
-        all_positions['unrealizedPrice'] = all_positions['total'].astype('float64') * all_positions["marketPrice"].astype('float64')
-        all_positions['unrealizedPrice'] = all_positions['unrealizedPrice'].round(4)
+        # all_positions["marketPrice"] = all_positions['symbol'].apply(lambda x: tickets[x]['last'] 
+        #                                                              if x in tickets.keys() else 0.0)
+        # all_positions['unrealizedPrice'] = all_positions['total'].astype('float64') * all_positions["marketPrice"].astype('float64')
+        # all_positions['unrealizedPrice'] = all_positions['unrealizedPrice'].round(4)
 
-        # all_positions["cost"] = all_positions['symbol'].apply(lambda x: await update_open_orders(exchange, x))
-        # update open order
-        if updateOrder:
-            open_symbols = all_positions['symbol'].to_list()
-            logger.debug(f'open_symbols: {open_symbols}')
-            loops = [async_close_order_history(symbol, 'spot') for symbol in orders_history.keys() if symbol not in open_symbols]
-            await gather(*loops)
+        # # all_positions["cost"] = all_positions['symbol'].apply(lambda x: await update_open_orders(exchange, x))
+        # # update open order
+        # if updateOrder:
+        #     open_symbols = all_positions['symbol'].to_list()
+        #     logger.debug(f'open_symbols: {open_symbols}')
+        #     loops = [async_close_order_history(symbol, 'spot') for symbol in orders_history.keys() if symbol not in open_symbols]
+        #     await gather(*loops)
 
-            loops = [update_open_orders(exchange, symbol) for symbol in all_positions['symbol']]
-            all_positions["Margin"] = await gather(*loops)
+        #     loops = [update_open_orders(exchange, symbol) for symbol in all_positions['symbol']]
+        #     all_positions["margin"] = await gather(*loops)
 
-        else:
-            def f(symbol):
-                if 'spot' in orders_history[symbol]['positions'].keys():
-                    if orders_history[symbol]['positions']['spot']['status'] == 'close':
-                        return 0.0
-                    infos = orders_history[symbol]['positions']['spot']['infos']
-                    if len(infos.keys()) == 0:
-                        return 0.0
-                    else:
-                        return sum(infos[k]['cost'] if 'cost' in infos[k].keys() else 0.0 for k in infos.keys())
-                else:
-                    return 0.0
-            all_positions["Margin"] = all_positions['symbol'].apply(lambda x: f(x))
+        # else:
+        #     def f(symbol):
+        #         if 'spot' in orders_history[symbol]['positions'].keys():
+        #             if orders_history[symbol]['positions']['spot']['status'] == 'close':
+        #                 return 0.0
+        #             infos = orders_history[symbol]['positions']['spot']['infos']
+        #             if len(infos.keys()) == 0:
+        #                 return 0.0
+        #             else:
+        #                 return sum(infos[k]['cost'] if 'cost' in infos[k].keys() else 0.0 for k in infos.keys())
+        #         else:
+        #             return 0.0
+        #     all_positions["margin"] = all_positions['symbol'].apply(lambda x: f(x))
 
-        all_positions["unrealizedProfit"] = all_positions['unrealizedPrice'] - all_positions["Margin"]
-        all_positions['unrealizedProfit'] = all_positions['unrealizedProfit'].round(4)
+        # all_positions["unrealizedProfit"] = all_positions['unrealizedPrice'] - all_positions["margin"]
+        # all_positions['unrealizedProfit'] = all_positions['unrealizedProfit'].round(4)
                     
-        all_positions.drop(all_positions[all_positions['Margin'].eq(0.0)].index, inplace=True)
-        all_positions.reset_index(drop=True, inplace=True)
+        # all_positions.drop(all_positions[all_positions['margin'].eq(0.0)].index, inplace=True)
+        # all_positions.reset_index(drop=True, inplace=True)
+
+        all_positions = await update_all_positions(exchange, tickets, balances, updateOrder)
 
         count_trade = len(all_positions)
 
@@ -2366,7 +2342,7 @@ async def main():
             else:
                 # mm strategy
                 if config.trade_mode == 'on' and seconds >= next_ticker_mm:
-                    # await mm_strategy()
+                    await mm_strategy()
                     await update_tailing_stop_rt()
                     next_ticker_mm += time_wait_mm
                     line_notify_last_err()
